@@ -9,6 +9,25 @@ namespace LogiWheelForge.Tests;
 public sealed class ConfigurationAndLearningTests
 {
     [TestMethod]
+    public async Task Settings_MigrateDefinitionPreferenceAndRoundTripInstanceAndUiReduction()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            var old = LedProfileSettings.Defaults with { SchemaVersion = 5, PreferredWheelId = "g29" };
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(old));
+            var store = new SettingsStore(path); var migrated = await store.LoadAsync();
+            Assert.IsNull(migrated.PreferredWheelId); Assert.IsNull(migrated.PreferredWheelInstanceId);
+            Assert.IsTrue(migrated.ReduceUiUpdatesWhenUnfocused);
+            Assert.AreEqual(LedProfileSettings.CurrentSchemaVersion, migrated.SchemaVersion);
+            await store.SaveAsync(migrated with { PreferredWheelInstanceId = "container:physical-instance", ReduceUiUpdatesWhenUnfocused = false });
+            var current = await store.LoadAsync();
+            Assert.AreEqual("container:physical-instance", current.PreferredWheelInstanceId); Assert.IsFalse(current.ReduceUiUpdatesWhenUnfocused);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [TestMethod]
     public void Catalog_LoadsValidFilesAndIsolatesInvalidOrDuplicateFiles()
     {
         var root = Path.Combine(Path.GetTempPath(), "LogiWheelForge.Tests", Guid.NewGuid().ToString("N"));

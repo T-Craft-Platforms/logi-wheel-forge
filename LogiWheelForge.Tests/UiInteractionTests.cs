@@ -30,17 +30,17 @@ public sealed class UiInteractionTests
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Assert.IsTrue(thread.Join(TimeSpan.FromSeconds(30)), "UI verification timed out");
+        Assert.IsTrue(thread.Join(TimeSpan.FromSeconds(90)), "UI verification timed out");
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     private static void ExerciseUi()
     {
-        var app = new Application();
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(Dictionary("Dark"));
         app.Resources.MergedDictionaries.Add(Dictionary("Controls"));
         app.Resources["InteractiveCursor"] = System.Windows.Input.Cursors.Hand;
-        using var service = new InputMapperService([]);
+        using var service = new InputMapperService([], new InputMapperProfileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json")), new InertWheelResistance(), new InertMapperOutput());
         using var model = new InputMapperViewModel(service);
         model.Initialize();
         var view = new InputMapperView { DataContext = model };
@@ -100,17 +100,17 @@ public sealed class UiInteractionTests
         {
             app.Resources.MergedDictionaries[0] = Dictionary(theme);
             root.Resources.MergedDictionaries[0] = Dictionary(theme);
-            foreach (var width in new[] { 944d, 608d })
+            foreach (var width in new[] { 944d, 608d, 1320d })
             {
                 tabs.SelectedIndex = 0;
                 Layout(root, width, 704);
                 Pump(280);
-                var title = Descendants<TextBlock>(view).Single(text => text.Text == model.PageTitle);
+                var title = Descendants<TextBlock>(view).Single(text => text.Text == model.PageTitle && text.FontSize == 28);
                 var textColor = ((SolidColorBrush)root.Resources["TextBrush"]).Color;
                 Assert.AreEqual(textColor, ((SolidColorBrush)title.Foreground).Color, "Headings must follow the active theme");
-                var save = Descendants<Button>(view).Single(button => Equals(button.Content, "Save changes"));
-                var caption = Descendants<TextBlock>(save).Single();
-                Assert.AreEqual(Colors.White, ((SolidColorBrush)caption.Foreground).Color, "Accent buttons need readable captions in both themes");
+                Assert.IsFalse(Descendants<Button>(view).Any(button => Equals(button.Content, "Save changes")), "Profiles should autosave without a bottom save bar.");
+                Assert.IsTrue(Descendants<TextBlock>(view).Any(text => text.Text is "Saved" or "Saving" or "Needs attention"));
+                Assert.IsTrue(Descendants<ModuleHeader>(view).Single().ModuleEnabled);
                 Render(root, $"mapper-{theme}-{width}");
                 Assert.IsTrue(Descendants<ComboBox>(view).Where(combo => combo.ActualWidth > 0).All(combo => combo.ActualWidth > 100));
                 tabs.SelectedIndex = 1;
@@ -123,6 +123,8 @@ public sealed class UiInteractionTests
                 Render(root, $"mapper-resistance-{theme}-{width}");
             }
         }
+
+        ExerciseDashboardAndDisabledModules(app, root);
 
         var checkbox = new CheckBox { Content = "Animated switch", Width = 220 };
         root.Child = checkbox;
@@ -150,6 +152,91 @@ public sealed class UiInteractionTests
         module.IsChecked = true;
         Pump(230);
         Assert.AreEqual(20d, ((TranslateTransform)thumb.RenderTransform).X, .01);
+    }
+
+    private static void ExerciseDashboardAndDisabledModules(Application app, Border root)
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), "LogiWheelForge.Ui", Guid.NewGuid().ToString("N"));
+        var led = new LedIndicatorService(new SilentTelemetry(), new DisconnectedLed(), new SettingsStore(Path.Combine(temporary, "settings.json")),
+            redlineLearner: new SmartRedlineLearner(Path.Combine(temporary, "calibrations.json")), profileStore: new WheelProfileStore(Path.Combine(temporary, "profiles")));
+        using var mapper = new InputMapperService([], new InputMapperProfileStore(Path.Combine(temporary, "mapper.json")), new InertWheelResistance(), new InertMapperOutput());
+        using var selection = new WheelSelectionService([], () => []);
+        using var dashboard = new DashboardViewModel(led, mapper, selection);
+        var state = new ModuleState();
+        var host = new Window { DataContext = state, Content = root, ShowInTaskbar = false, WindowStyle = WindowStyle.None };
+        host.Show();
+        try
+        {
+            var dashboardView = new DashboardView { DataContext = dashboard };
+            foreach (var theme in new[] { "Dark", "Light" })
+            {
+                app.Resources.MergedDictionaries[0] = Dictionary(theme); root.Resources.MergedDictionaries[0] = Dictionary(theme);
+                foreach (var width in new[] { 608d, 944d, 1320d })
+                {
+                    root.Child = dashboardView; Layout(root, width, 704); Pump(30); Render(root, $"dashboard-{theme}-{width}");
+                    Assert.AreEqual(6, dashboard.Board.Widgets.Count);
+                    dashboard.Board.IsEditing = true; Layout(root, width, 704); Pump(30);
+                    var handle = Descendants<Thumb>(dashboardView).First(t => System.Windows.Automation.AutomationProperties.GetName(t) == "Move widget");
+                    Assert.IsTrue(handle.Focusable);
+                    Render(root, $"dashboard-edit-{theme}-{width}"); dashboard.Board.IsEditing = false;
+                    using var mapperModel = new InputMapperViewModel(mapper); mapperModel.Initialize();
+                    root.Child = new InputMapperView { DataContext = mapperModel }; Layout(root, width, 704); Pump(30);
+                    Assert.IsTrue(Descendants<ModuleWelcome>(root).Single().IsVisible);
+                    Assert.IsFalse(Descendants<Button>(root).Any(b => b.IsVisible && Equals(b.Content, "+ New profile")));
+                    Render(root, $"mapper-disabled-{theme}-{width}");
+                    using var rpmModel = new RpmProfileViewModel(led, new SettingsDraft(), _ => { });
+                    root.Child = new RpmProfileView { DataContext = rpmModel }; Layout(root, width, 704); Pump(30);
+                    Assert.IsTrue(Descendants<ModuleWelcome>(root).Single().IsVisible);
+                    Assert.IsFalse(Descendants<Button>(root).Any(b => b.IsVisible && Equals(b.Content, "Test LEDs")));
+                    Render(root, $"led-disabled-{theme}-{width}");
+                }
+                root.Child = dashboardView; Layout(root, 944, 704);
+                foreach (var widget in dashboard.Board.Widgets.ToArray()) dashboard.Board.Remove(widget.Kind);
+                Layout(root, 944, 704); Render(root, $"dashboard-empty-{theme}");
+                Assert.IsTrue(Descendants<Button>(root).Any(b => b.IsVisible && Equals(b.Content, "Add widgets")));
+                dashboard.Board.Reset();
+            }
+        }
+        finally
+        {
+            host.Content = null; host.Close();
+            // No receiver was started, so disposal completes synchronously.
+            led.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private sealed class ModuleState
+    {
+        public bool IsLedModuleEnabled { get; set; }
+        public bool IsInputMapperModuleEnabled { get; set; }
+    }
+    private sealed class SilentTelemetry : ITelemetryReceiver
+    {
+        public bool IsRunning => false;
+        public event Action<TelemetryFrame>? FrameReceived { add { } remove { } }
+        public event Action<string>? ErrorOccurred { add { } remove { } }
+        public Task StartAsync(LedProfileSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task StopAsync() => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class DisconnectedLed : IWheelLedController
+    {
+        public bool IsConnected => false;
+        public string WheelName => "No wheel detected";
+        public string StatusMessage => "No wheel detected";
+        public WheelDefinition? CurrentDefinition => null;
+        public IReadOnlyList<WheelDefinition> AvailableDefinitions => [];
+        public IReadOnlyList<string> DefinitionDiagnostics => [];
+        public bool Initialize(nint handle) => true;
+        public void SetPreferredWheel(string? id) { }
+        public void Refresh() { }
+        public void RefreshNow() { }
+        public bool SetLevel(int groups) => true;
+        public void ClearLeds() { }
+        public Task TestLedsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task PlayReadyAnimationAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Shutdown() { }
+        public void Dispose() { }
     }
 
     private static ResourceDictionary Dictionary(string name) => new()

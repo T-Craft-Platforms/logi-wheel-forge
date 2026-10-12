@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+ <ItemGroup>
+  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1"/>
+  <PackageReference Include="MSTest.TestAdapter" Version="3.9.3"/>
+  <PackageReference Include="MSTest.TestFramework" Version="3.9.3"/>
+ </ItemGroup>
+ <!-- Compile the actual portable production code so these regressions also run without Windows hardware/WPF. -->
+ <ItemGroup>
+  <Compile Include="../LogiWheelForge/Models/DashboardLayout.cs" Link="Production/DashboardLayout.cs"/>
+  <Compile Include="../LogiWheelForge/Models/ConnectedWheel.cs" Link="Production/ConnectedWheel.cs"/>
+  <Compile Include="../LogiWheelForge/Services/DashboardLayoutEngine.cs" Link="Production/DashboardLayoutEngine.cs"/>
+  <Compile Include="../LogiWheelForge/Services/DashboardLayoutStore.cs" Link="Production/DashboardLayoutStore.cs"/>
+  <Compile Include="../LogiWheelForge/Services/ConnectedWheelSelection.cs" Link="Production/ConnectedWheelSelection.cs"/>
+  <Compile Include="../LogiWheelForge/Services/PresentationUpdateCoordinator.cs" Link="Production/PresentationUpdateCoordinator.cs"/>
+  <Compile Include="../LogiWheelForge/Services/RevisionedAutosave.cs" Link="Production/RevisionedAutosave.cs"/>
+  <Compile Include="../LogiWheelForge/ViewModels/DraftNumberFields.cs" Link="Production/DraftNumberFields.cs"/>
+ </ItemGroup>
+</Project>

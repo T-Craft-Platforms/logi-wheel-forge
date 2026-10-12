@@ -1,0 +1,27 @@
+name: Build and test
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/**']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      VSTEST_CONNECTION_TIMEOUT: 180
+      LOGIWHEELFORGE_RENDER_OUTPUT: ${{ github.workspace }}/artifacts/ui-renders
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build LogiWheelForge.sln -c Release --disable-build-servers
+      - run: dotnet test LogiWheelForge.Tests/LogiWheelForge.Tests.csproj -c Release --no-build --settings LogiWheelForge.Tests/test.runsettings --logger "trx;LogFileName=windows.trx" --results-directory artifacts/tests --diag artifacts/tests/testhost.log
+      - run: dotnet test LogiWheelForge.Core.Tests/LogiWheelForge.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=core.trx" --results-directory artifacts/tests
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-and-ui-renders
+          path: artifacts/
+          if-no-files-found: warn

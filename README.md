@@ -22,13 +22,25 @@ Definition schema version 2 can also declare logical input controls by HID `usag
 
 ## Input Mapper
 
-Choose **Input Mapper** in the sidebar, create a profile, then add one or more target executable paths with **Pick window** or manual entry. Each enabled executable can belong to only one profile. Save the profile and start the mapper. Mapping activates only while one of its target processes owns the foreground window. Settings has a separate **Start Input Mapper on launch** option; it is off for new installations.
+Choose **Input Mapper** in the sidebar and enable it using the labelled module switch. Create a profile from the card overview, then link one or more target executable paths with **Pick an open window** or manual entry. Each executable can belong to only one enabled profile. Changes autosave after 400 ms; **Saving**, **Saved**, and **Needs attention** appear beside the profile heading. Invalid edits and write failures retain the last valid runtime configuration. Editing an inactive profile leaves the active profile running; changing an active profile releases its outputs before applying the saved configuration. Exit flushes pending changes and offers correction or explicit discard when a save cannot complete.
 
 New profiles include editable starter rules: clockwise steering steps tap `D`, counterclockwise steps tap `A`, accelerator holds `W`, and brake holds `S`. A steering step of 5% means five percentage points of normalized travel. **Movement** follows the direction the wheel moves, including while returning toward center; **AwayFromCenter** ignores return travel. Each tap duration, step size, range, dead zone, curve, and output can be changed. Key chords use WPF key names separated by `+`, such as `LeftCtrl+K`; mouse buttons use `Left`, `Right`, `Middle`, `X1`, or `X2`. Mouse movement uses `Horizontal` or `Vertical` as its output axis.
 
 Resistance is off until enabled on a profile. Center and damper strengths are set per profile. Soft detents repeat at the configured spacing; a hold-target rule pulls toward a chosen steering percentage until its range ends or an explicit release rule fires. Effects stop when the profile loses focus, the wheel disconnects, or the mapper stops. The wheel driver must expose the corresponding DirectInput effects and allow exclusive force-feedback access. Keyboard and mouse injection uses Windows `SendInput`, which follows Windows integrity-level restrictions; an elevated target may reject input from a non-elevated mapper.
 
-Input Mapper profiles and startup preferences are stored separately in `%LOCALAPPDATA%\LogiWheelForge\input-mapper-profiles.json` and `input-mapper-settings.json`.
+Input Mapper profiles stay in `%LOCALAPPDATA%\LogiWheelForge\input-mapper-profiles.json`. Module switches are remembered in `settings.json`; existing profile IDs, rules, application links, resistance settings, and wheel profiles are retained. Legacy X/Y mouse axes are accepted and saved as Horizontal/Vertical.
+
+The editor opens from a profile card and has **Mappings**, **Applications**, and **Resistance** sections. All mappings remain visible in a selectable list; details appear beside it on wide layouts and below it on narrow layouts. **Preview** evaluates the selected draft using inert adapters: it sends no Windows input or physical resistance. **Live** executes only when a linked application owns the foreground window. Both the editor and dashboard show rule activity, including triggered, held, queued, released, and failed outputs.
+
+## Dashboard and connected wheels
+
+Use **Edit dashboard** to add or remove widgets, choose Small/Medium/Large sizes, and drag their handles. Arrow buttons provide keyboard movement, and Escape cancels a drag. Dropping a widget moves intersecting widgets downward while preserving gaps. The board uses 4/2/1 columns at available widths of at least 880/440/below 440 DIP, with 16-DIP gaps and 180-DIP rows. Medium spans two cells horizontally and Large spans two cells in each direction, with width clamped to the available columns.
+
+The default board includes detected wheel, telemetry/vehicle, RPM/LEDs, mapper status, wheel inputs, and live mappings. Resistance is optional. Each widget can be added once per layout. Disabled modules leave compact placeholders in their existing positions. Empty boards offer **Add widgets**; **Reset layout** restores defaults across every breakpoint. Layouts are versioned and atomically saved to `%LOCALAPPDATA%\LogiWheelForge\dashboard-layout.json`, with separate membership, sizes, and placements for each column breakpoint.
+
+Settings and the dashboard share a picker containing connected physical wheels only. A single wheel is shown by name, and identical models receive separate labels. USB pedals remain auxiliary inputs. Connecting another wheel preserves the current selection; disconnecting it chooses an available replacement. Discovery continues every second, including while Settings is open. Old model-based preferences migrate to automatic detection; new instance preferences cannot block detection when their device is disconnected.
+
+**Reduce UI updates when unfocused** is on by default. Mounted live views refresh at up to 30 Hz when focused, 2 Hz when visible but unfocused, and stop refreshing while minimized or hidden in the tray. Turning the preference off keeps the normal visible refresh rate. Telemetry, input mapping, resistance, wheel discovery, persistence, and tray commands continue independently.
 
 ## Supported telemetry
 
@@ -58,9 +70,12 @@ Requirements: Windows 10/11 x64 and the .NET 10 SDK.
 
 ```powershell
 dotnet build .\LogiWheelForge.sln -c Release
-dotnet test .\LogiWheelForge.Tests\LogiWheelForge.Tests.csproj -c Release
+dotnet test .\LogiWheelForge.Tests\LogiWheelForge.Tests.csproj -c Release --settings .\LogiWheelForge.Tests\test.runsettings
+dotnet test .\LogiWheelForge.Core.Tests\LogiWheelForge.Core.Tests.csproj -c Release
 dotnet publish .\LogiWheelForge\LogiWheelForge.csproj -c Release -r win-x64 --self-contained true -o .\artifacts\publish
 ```
+
+The portable core tests also run on Linux/macOS with .NET 10. The WPF/runtime suite needs Windows x64 and the Windows Desktop runtime. The **Build and test** workflow saves TRX results, test-host diagnostics, and both-theme UI renders. See [redesign validation](docs/redesign-validation.md) for the implementation checks and remaining hardware verification.
 
 ## Releases
 
