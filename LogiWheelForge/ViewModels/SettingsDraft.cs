@@ -38,6 +38,9 @@ public sealed class SettingsDraft : ObservableObject
         set => SetField(ref _learnPerCarShift, value);
     }
 
+    private bool _reduceUiUpdatesWhenUnfocused = true;
+    public bool ReduceUiUpdatesWhenUnfocused { get => _reduceUiUpdatesWhenUnfocused; set => SetField(ref _reduceUiUpdatesWhenUnfocused, value); }
+
     public bool CloseToTray
     {
         get => _closeToTray;

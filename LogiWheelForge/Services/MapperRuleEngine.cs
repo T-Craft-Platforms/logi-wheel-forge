@@ -2,6 +2,9 @@ using LogiWheelForge.Models;
 
 namespace LogiWheelForge.Services;
 
+public enum MappingOutputState { Triggered, Held, Queued, Released, Failed }
+public sealed record MappingActivity(string ProfileId, string RuleId, MappingOutputState State, DateTimeOffset At, string? Error = null);
+
 public interface IMapperOutput
 {
     string? LastError { get; }
@@ -50,6 +53,11 @@ public sealed class MapperRuleEngine
         _output = output; _force = force; _clock = clock ?? TimeProvider.System;
     }
 
+    public event EventHandler<MappingActivity>? ActivityChanged;
+    private void Activity(MapperRule rule, MappingOutputState state, bool success = true) =>
+        ActivityChanged?.Invoke(this, new MappingActivity(_profile?.Id ?? string.Empty, rule.Id,
+            success ? state : MappingOutputState.Failed, _clock.GetUtcNow(), success ? null : _output.LastError ?? _force.Status));
+
     public int DroppedPulses { get; private set; }
     public void Activate(InputMapperProfile profile, string wheelId)
     {
@@ -61,6 +69,7 @@ public sealed class MapperRuleEngine
 
     public void Deactivate()
     {
+        if (_profile is not null) foreach (var rule in _profile.Rules) Activity(rule, MappingOutputState.Released);
         _profile = null;
         _states.Clear(); _values.Clear(); _pulses.Clear(); _currentPulse = null;
         _output.ReleaseAll();
@@ -122,13 +131,15 @@ public sealed class MapperRuleEngine
         var now = _clock.GetUtcNow();
         if (_currentPulse is not null && now >= _currentPulse.Until)
         {
-            _output.Release(_currentPulse.Rule.Output, _currentPulse.Rule.Action == MapperActionKind.MouseButton);
+            Activity(_currentPulse.Rule, MappingOutputState.Released,
+                _output.Release(_currentPulse.Rule.Output, _currentPulse.Rule.Action == MapperActionKind.MouseButton));
             _currentPulse = null;
         }
         if (_currentPulse is null && _pulses.TryDequeue(out var pulseRule))
         {
             if (_output.Press(pulseRule.Output, pulseRule.Action == MapperActionKind.MouseButton))
-                _currentPulse = new Pulse(pulseRule, now.AddMilliseconds(pulseRule.DurationMs));
+            { _currentPulse = new Pulse(pulseRule, now.AddMilliseconds(pulseRule.DurationMs)); Activity(pulseRule, MappingOutputState.Held); }
+            else Activity(pulseRule, MappingOutputState.Failed, false);
         }
         foreach (var rule in _profile.Rules.Where(rule =>
                      rule.Action is (MapperActionKind.MouseMove or MapperActionKind.MouseScroll) &&
@@ -140,14 +151,14 @@ public sealed class MapperRuleEngine
             {
                 var pixels = (int)Math.Round(amount);
                 if (pixels != 0)
-                    _output.Move(rule.Output.Equals("Vertical", StringComparison.OrdinalIgnoreCase) ? 0 : pixels,
-                        rule.Output.Equals("Vertical", StringComparison.OrdinalIgnoreCase) ? pixels : 0);
+                    Activity(rule, MappingOutputState.Held, _output.Move(MapperOutputValidation.NormalizeMouseAxis(rule.Output) == "Vertical" ? 0 : pixels,
+                        MapperOutputValidation.NormalizeMouseAxis(rule.Output) == "Vertical" ? pixels : 0));
             }
             else
             {
                 _scrollRemainder += amount / 60;
                 var clicks = (int)Math.Truncate(_scrollRemainder);
-                if (clicks != 0) { _output.Scroll(clicks); _scrollRemainder -= clicks; }
+                if (clicks != 0) { Activity(rule, MappingOutputState.Triggered, _output.Scroll(clicks)); _scrollRemainder -= clicks; }
             }
         }
     }
@@ -160,41 +171,43 @@ public sealed class MapperRuleEngine
         else
         {
             if (rule.Mode == MapperActionMode.Hold && rule.Action is MapperActionKind.Key or MapperActionKind.MouseButton)
-                _output.Release(rule.Output, rule.Action == MapperActionKind.MouseButton);
+                Activity(rule, MappingOutputState.Released, _output.Release(rule.Output, rule.Action == MapperActionKind.MouseButton));
             if (rule.Action == MapperActionKind.HoldTarget && rule.ForceRelease == MapperForceRelease.RangeExit)
                 _force.ReleaseHold();
+            if (rule.Mode != MapperActionMode.Toggle) Activity(rule, MappingOutputState.Released);
         }
     }
 
     private void Fire(MapperRule rule, RuleState state)
     {
+        Activity(rule, MappingOutputState.Triggered);
         if (rule.Action == MapperActionKind.HoldTarget)
         {
-            _force.Hold(rule.TargetPercent, rule.ForceStrength); return;
+            _force.Hold(rule.TargetPercent, rule.ForceStrength); Activity(rule, MappingOutputState.Held, _force.IsAvailable); return;
         }
-        if (rule.Action == MapperActionKind.ReleaseTarget) { _force.ReleaseHold(); return; }
+        if (rule.Action == MapperActionKind.ReleaseTarget) { _force.ReleaseHold(); Activity(rule, MappingOutputState.Released); return; }
         if (rule.Trigger == MapperTriggerKind.AxisStep && rule.Action == MapperActionKind.MouseMove)
         {
             var pixels = (int)Math.Round(rule.OutputScale);
-            _output.Move(rule.Output.Equals("Vertical", StringComparison.OrdinalIgnoreCase) ? 0 : pixels,
-                rule.Output.Equals("Vertical", StringComparison.OrdinalIgnoreCase) ? pixels : 0);
+            Activity(rule, MappingOutputState.Triggered, _output.Move(MapperOutputValidation.NormalizeMouseAxis(rule.Output) == "Vertical" ? 0 : pixels,
+                MapperOutputValidation.NormalizeMouseAxis(rule.Output) == "Vertical" ? pixels : 0));
             return;
         }
         if (rule.Trigger == MapperTriggerKind.AxisStep && rule.Action == MapperActionKind.MouseScroll)
-        { _output.Scroll((int)Math.Round(rule.OutputScale)); return; }
+        { Activity(rule, MappingOutputState.Triggered, _output.Scroll((int)Math.Round(rule.OutputScale))); return; }
         if (rule.Action is not (MapperActionKind.Key or MapperActionKind.MouseButton)) return;
         var mouse = rule.Action == MapperActionKind.MouseButton;
         switch (rule.Mode)
         {
-            case MapperActionMode.Hold: _output.Press(rule.Output, mouse); break;
+            case MapperActionMode.Hold: Activity(rule, MappingOutputState.Held, _output.Press(rule.Output, mouse)); break;
             case MapperActionMode.Toggle:
                 state.Toggled = !state.Toggled;
-                if (state.Toggled) _output.Press(rule.Output, mouse);
-                else _output.Release(rule.Output, mouse);
+                if (state.Toggled) Activity(rule, MappingOutputState.Held, _output.Press(rule.Output, mouse));
+                else Activity(rule, MappingOutputState.Released, _output.Release(rule.Output, mouse));
                 break;
             case MapperActionMode.Tap:
-                if (_pulses.Count < 12) _pulses.Enqueue(rule);
-                else DroppedPulses++;
+                if (_pulses.Count < 12) { _pulses.Enqueue(rule); Activity(rule, MappingOutputState.Queued); }
+                else { DroppedPulses++; Activity(rule, MappingOutputState.Failed, false); }
                 break;
         }
     }

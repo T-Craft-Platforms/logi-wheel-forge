@@ -52,6 +52,12 @@ public sealed record MapperRule
         else if (Action is MapperActionKind.Key or MapperActionKind.MouseButton or MapperActionKind.MouseMove &&
                  string.IsNullOrWhiteSpace(Output))
             error = "Choose an output for the rule.";
+        else if (Action == MapperActionKind.Key && !MapperOutputValidation.IsValidShortcut(Output))
+            error = "Enter a valid key or shortcut, such as Space or LeftCtrl+K.";
+        else if (Action == MapperActionKind.MouseButton && !MapperOutputValidation.IsMouseButton(Output))
+            error = "Choose Left, Right, Middle, X1 or X2.";
+        else if (Action == MapperActionKind.MouseMove && MapperOutputValidation.NormalizeMouseAxis(Output) is not ("Horizontal" or "Vertical"))
+            error = "Choose Horizontal or Vertical for mouse movement.";
         else if (Trigger == MapperTriggerKind.AxisStep && Mode == MapperActionMode.Hold &&
                  Action is (MapperActionKind.Key or MapperActionKind.MouseButton))
             error = "A step rule cannot hold a key or mouse button. Use an axis range.";

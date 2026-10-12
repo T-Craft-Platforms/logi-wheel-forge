@@ -20,12 +20,14 @@ public sealed class InputMapperProfileStore
         if (!File.Exists(_path)) return [];
         await using var stream = File.OpenRead(_path);
         var profiles = await JsonSerializer.DeserializeAsync<InputMapperProfile[]>(stream, Options, cancellationToken) ?? [];
+        profiles = Normalize(profiles);
         Validate(profiles);
         return profiles;
     }
 
     public async Task SaveAsync(IReadOnlyList<InputMapperProfile> profiles, CancellationToken cancellationToken = default)
     {
+        profiles = Normalize(profiles);
         Validate(profiles);
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
@@ -45,6 +47,9 @@ public sealed class InputMapperProfileStore
             if (File.Exists(temporary)) File.Delete(temporary);
         }
     }
+
+    public static InputMapperProfile[] Normalize(IReadOnlyList<InputMapperProfile> profiles) => profiles.Select(profile =>
+        profile with { Rules = profile.Rules.Select(MapperOutputValidation.Normalize).ToArray() }).ToArray();
 
     public static void Validate(IReadOnlyList<InputMapperProfile> profiles)
     {

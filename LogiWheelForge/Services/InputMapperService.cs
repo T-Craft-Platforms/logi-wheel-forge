@@ -6,13 +6,17 @@ using LogiWheelForge.Models;
 namespace LogiWheelForge.Services;
 
 public sealed record InputMapperSnapshot(bool IsRunning, string Status, string? ActiveProfile,
-    string? ActiveWheel, string ForceStatus, int DroppedPulses);
+    string? ActiveWheel, string ForceStatus, int DroppedPulses, string? ActiveProfileId = null, string? ActiveApplication = null);
 
 public sealed class InputMapperService : IDisposable
 {
     private readonly InputMapperProfileStore _store;
     private readonly WheelInputSource _source;
     private readonly MapperRuleEngine _engine;
+    private readonly MapperRuleEngine _previewEngine;
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private InputMapperProfile? _previewProfile;
+    public MapperDiagnostics Diagnostics { get; } = new();
     private readonly IMapperOutput _output;
     private readonly IWheelResistanceController _force;
     private readonly DispatcherTimer _timer;
@@ -36,11 +40,16 @@ public sealed class InputMapperService : IDisposable
         _source = source ?? new WheelInputSource(wheels);
         _output = output ?? new WindowsInputEmitter();
         _engine = new MapperRuleEngine(_output, _force, clock);
+        _previewEngine = new MapperRuleEngine(new InertMapperOutput(), new InertWheelResistance(), clock);
+        _engine.ActivityChanged += (_, activity) => Diagnostics.Activity(activity, false);
+        _previewEngine.ActivityChanged += (_, activity) => Diagnostics.Activity(activity, true);
         _source.InputReceived += OnInput;
         _source.ErrorOccurred += OnInputError;
         _source.ActiveWheelChanged += (_, _) =>
         {
             _engine.Deactivate(); _active = null;
+            Diagnostics.ClearInputs();
+            if (_previewProfile is not null) _previewEngine.Activate(_previewProfile, _source.ActiveWheelId ?? "preview");
             RefreshTarget(); Publish();
         };
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
@@ -51,6 +60,7 @@ public sealed class InputMapperService : IDisposable
                 _nextPresenceCheck = DateTimeOffset.UtcNow.AddSeconds(1);
                 _source.CheckPresence();
             }
+            _previewEngine.Tick();
             if (!IsRunning) return;
             RefreshTarget();
             if (_active is not null) _engine.Tick();
@@ -123,24 +133,48 @@ public sealed class InputMapperService : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (_loadError is not null) throw new InvalidOperationException(_loadError);
-        await _store.SaveAsync(profiles, cancellationToken);
-        _profiles = profiles.ToArray();
-        _active = null;
-        _engine.Deactivate();
-        RefreshTarget();
-        Publish();
+        await _saveGate.WaitAsync(cancellationToken);
+        try
+        {
+            var normalized = InputMapperProfileStore.Normalize(profiles);
+            InputMapperProfileStore.Validate(normalized);
+            await _store.SaveAsync(normalized, cancellationToken);
+            var activeReplacement = normalized.FirstOrDefault(p => p.Id == _active?.Id);
+            var activeChanged = _active is not null && !ProfilesEqual(_active, activeReplacement);
+            _profiles = normalized;
+            Diagnostics.KeepProfiles(_profiles);
+            if (activeChanged) { _engine.Deactivate(); _active = null; }
+            RefreshTarget();
+            Publish();
+        }
+        finally { _saveGate.Release(); }
+    }
+
+    internal static bool ProfilesEqual(InputMapperProfile? first, InputMapperProfile? second) =>
+        System.Text.Json.JsonSerializer.Serialize(first) == System.Text.Json.JsonSerializer.Serialize(second);
+
+    public void SetPreviewProfile(InputMapperProfile? profile)
+    {
+        if (ProfilesEqual(_previewProfile, profile)) return;
+        _previewEngine.Deactivate();
+        Diagnostics.ClearPreview();
+        _previewProfile = profile;
+        if (profile is not null) _previewEngine.Activate(profile, _source.ActiveWheelId ?? "preview");
     }
 
     public void Dispose()
     {
         _timer.Stop();
         Stop();
+        SetPreviewProfile(null);
         _source.Dispose();
         _force.Dispose();
     }
 
     private void OnInput(object? sender, WheelInputSample sample)
     {
+        Diagnostics.Input(sample);
+        _previewEngine.Update(sample);
         InputPreview?.Invoke(this, sample);
         if (!IsRunning) return;
         RefreshTarget();
@@ -173,7 +207,7 @@ public sealed class InputMapperService : IDisposable
             path = _cachedForegroundPath;
         }
         else { _cachedForegroundWindow = 0; _cachedForegroundPath = null; }
-        var match = path is null ? null : _profiles.FirstOrDefault(profile => profile.Enabled &&
+        var match = path is null || _source.ActiveWheelId is null ? null : _profiles.FirstOrDefault(profile => profile.Enabled &&
             profile.ProcessPaths.Contains(path, StringComparer.OrdinalIgnoreCase));
         if (match is null && _active is null)
         {
@@ -209,7 +243,7 @@ public sealed class InputMapperService : IDisposable
 
     private void Publish() => SnapshotChanged?.Invoke(this, new InputMapperSnapshot(IsRunning,
         _loadError ?? (!IsRunning ? "Input Mapper is stopped" : _status ?? "Mapping active"),
-        _active?.Name, _source.ActiveWheelId, _force.Status, _engine.DroppedPulses));
+        _active?.Name, _source.ActiveWheelId, _force.Status, _engine.DroppedPulses, _active?.Id, _active is null ? null : _cachedForegroundPath));
 
     public static string? GetProcessPath(uint processId)
     {

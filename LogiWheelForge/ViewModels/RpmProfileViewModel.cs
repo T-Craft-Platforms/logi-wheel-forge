@@ -13,6 +13,8 @@ namespace LogiWheelForge.ViewModels;
 public sealed class RpmProfileViewModel : ObservableObject, IDisposable
 {
     private readonly SettingsDraft _draft;
+    private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly IDisposable? _presentation;
     private readonly HashSet<ThresholdViewModel> _observedThresholds = [];
     private readonly AsyncRelayCommand _primaryProfileCommand;
     private readonly AsyncRelayCommand _testLedsCommand;
@@ -27,9 +29,10 @@ public sealed class RpmProfileViewModel : ObservableObject, IDisposable
     private WheelProfile? _selectedSavedProfile;
     private string _pageTitle = "LED Indicator";
 
-    public RpmProfileViewModel(LedIndicatorService service, SettingsDraft draft, Action<string> setStatus)
+    public RpmProfileViewModel(LedIndicatorService service, SettingsDraft draft, Action<string> setStatus, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
     {
         _service = service;
+        _presentation = presentation?.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); }, mounted);
         _draft = draft;
         _setStatus = setStatus;
         _primaryProfileCommand = new AsyncRelayCommand(ExecutePrimaryProfileActionAsync,
@@ -145,6 +148,7 @@ public sealed class RpmProfileViewModel : ObservableObject, IDisposable
     {
         foreach (var threshold in _observedThresholds) threshold.PropertyChanged -= OnThresholdChanged;
         _draft.PropertyChanged -= OnDraftPropertyChanged;
+        _presentation?.Dispose();
         _service.SnapshotChanged -= OnSnapshotChanged;
     }
 
@@ -225,6 +229,7 @@ public sealed class RpmProfileViewModel : ObservableObject, IDisposable
 
     private void OnSnapshotChanged(object? sender, AppSnapshot snapshot)
     {
+        if (_presentation is not null) { _latest.Set(snapshot); return; }
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess()) ApplySnapshot(snapshot);
         else dispatcher.BeginInvoke(() => ApplySnapshot(snapshot));

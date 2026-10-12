@@ -68,6 +68,7 @@ public sealed class WindowsInputEmitter : IMapperOutput
     {
         if (mouseButton)
         {
+            if (!LogiWheelForge.Models.MapperOutputValidation.IsMouseButton(output)) { LastError = "Invalid mouse button"; return false; }
             var flags = output.Trim().ToLowerInvariant() switch
             {
                 "left" => up ? 0x0004u : 0x0002u,
@@ -81,6 +82,7 @@ public sealed class WindowsInputEmitter : IMapperOutput
                 { Flags = flags, MouseData = output.Equals("x2", StringComparison.OrdinalIgnoreCase) ? 2u : 1u } } });
         }
 
+        if (!LogiWheelForge.Models.MapperOutputValidation.IsValidShortcut(output)) { LastError = "Invalid keyboard shortcut"; return false; }
         var parts = output.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return false;
         if (up) Array.Reverse(parts);

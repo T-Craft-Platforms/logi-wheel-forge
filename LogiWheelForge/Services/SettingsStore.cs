@@ -50,6 +50,8 @@ public sealed class SettingsStore
                 settings = settings with
                 {
                     SchemaVersion = LedProfileSettings.CurrentSchemaVersion,
+                    PreferredWheelId = null,
+                    PreferredWheelInstanceId = settings.SchemaVersion < 6 ? null : settings.PreferredWheelInstanceId,
                     TelemetryGames = settings.TelemetryGames is { Length: > 0 }
                         ? settings.TelemetryGames
                         : [TelemetryGameSettings.DefaultForza with

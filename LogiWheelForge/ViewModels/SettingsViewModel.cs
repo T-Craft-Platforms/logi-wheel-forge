@@ -12,6 +12,9 @@ namespace LogiWheelForge.ViewModels;
 public sealed class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly SettingsDraft _draft;
+    private readonly WheelSelectionService? _selection;
+    private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly IDisposable? _presentation;
     private readonly LedIndicatorService _service;
     private readonly Action<string> _setStatus;
     private readonly AsyncRelayCommand _startStopCommand;
@@ -20,9 +23,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private bool _isWheelConnected;
     private TelemetryWatchOption? _selectedWatch;
 
-    public SettingsViewModel(LedIndicatorService service, SettingsDraft draft, Action<string> setStatus)
+    public SettingsViewModel(LedIndicatorService service, SettingsDraft draft, Action<string> setStatus, WheelSelectionService? selection = null,
+        PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
     {
         _service = service;
+        _selection = selection;
+        if (selection is not null) selection.DevicesChanged += OnDevicesChanged;
+        _presentation = presentation?.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); }, mounted);
         _draft = draft;
         _setStatus = setStatus;
         _startStopCommand = new AsyncRelayCommand(ToggleRunningAsync,
@@ -33,7 +40,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _service.SnapshotChanged += OnSnapshotChanged;
     }
 
-    public ObservableCollection<WheelOption> WheelOptions { get; } = [];
+    public ObservableCollection<ConnectedWheel> WheelOptions { get; } = [];
     public ObservableCollection<TelemetryGameSettings> TelemetryGames { get; } = [];
     public ObservableCollection<TelemetryWatchOption> WatchOptions { get; } = [];
     public IReadOnlyList<AppTheme> Themes { get; } = Enum.GetValues<AppTheme>();
@@ -70,10 +77,25 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         set => _draft.Theme = value;
     }
 
-    public WheelOption? SelectedWheel
+    public bool ReduceUiUpdatesWhenUnfocused
     {
-        get => _draft.SelectedWheel;
-        set => _draft.SelectedWheel = value;
+        get => _draft.ReduceUiUpdatesWhenUnfocused;
+        set => _draft.ReduceUiUpdatesWhenUnfocused = value;
+    }
+    public ConnectedWheel? SelectedWheel
+    {
+        get => _selection?.ActiveDevice;
+        set { if (value is not null) _selection?.SetPreferredWheel(value.InstanceId); }
+    }
+    public bool HasMultipleWheels => WheelOptions.Count > 1;
+    public string DetectedWheelName => _selection?.ActiveDevice?.PickerLabel ?? "No wheel detected";
+    private void OnDevicesChanged(object? sender, WheelDeviceSnapshot snapshot)
+    {
+        WheelOptions.Clear();
+        foreach (var wheel in snapshot.Connected) WheelOptions.Add(wheel);
+        OnPropertyChanged(nameof(SelectedWheel));
+        OnPropertyChanged(nameof(HasMultipleWheels));
+        OnPropertyChanged(nameof(DetectedWheelName));
     }
 
     public string WheelVerification => _activeDefinition is null ? "Waiting for detection" :
@@ -81,6 +103,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _presentation?.Dispose();
+        if (_selection is not null) _selection.DevicesChanged -= OnDevicesChanged;
         _draft.PropertyChanged -= OnDraftPropertyChanged;
         _service.SnapshotChanged -= OnSnapshotChanged;
     }
@@ -89,10 +113,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     public void Initialize(LedProfileSettings settings, IReadOnlyList<WheelDefinition> wheels)
     {
-        WheelOptions.Clear();
-        WheelOptions.Add(new WheelOption(null, "Auto-detect (recommended)"));
-        foreach (var wheel in wheels) WheelOptions.Add(new WheelOption(wheel.Id, wheel.DisplayName));
-        SelectedWheel = WheelOptions.FirstOrDefault(x => x.Id == settings.PreferredWheelId) ?? WheelOptions[0];
+        if (_selection is not null) OnDevicesChanged(_selection, _selection.Snapshot);
         TelemetryGames.Clear();
         var usedPorts = settings.TelemetryGames.Select(item => item.Port).ToHashSet();
         foreach (var game in Enum.GetValues<TelemetryGame>())
@@ -153,6 +174,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     {
         var name = e.PropertyName switch
         {
+            nameof(SettingsDraft.ReduceUiUpdatesWhenUnfocused) => nameof(ReduceUiUpdatesWhenUnfocused),
             nameof(SettingsDraft.CloseToTray) => nameof(CloseToTray),
             nameof(SettingsDraft.UsePointerCursors) => nameof(UsePointerCursors),
             nameof(SettingsDraft.Theme) => nameof(Theme),
@@ -170,6 +192,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private void OnSnapshotChanged(object? sender, AppSnapshot snapshot)
     {
+        if (_presentation is not null) { _latest.Set(snapshot); return; }
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess()) ApplySnapshot(snapshot);
         else dispatcher.BeginInvoke(() => ApplySnapshot(snapshot));

@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly ToolStripMenuItem _mapperMenuItem;
     private readonly NotifyIcon _trayIcon;
     private readonly MainViewModel _viewModel;
+    private readonly DispatcherTimer _presentationTimer = new(DispatcherPriority.Background);
     private bool _allowClose, _shownTrayHint, _exiting, _trayDisposed, _startupComplete;
     private bool _userCollapsedNavigation, _isNarrowWindow, _isNavigationOverlayOpen;
     private double _navigationColumnTarget = ExpandedNavigationWidth;
@@ -53,6 +54,12 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         _lastSelectedTab = viewModel.SelectedTab;
         DataContext = viewModel;
+        _presentationTimer.Tick += (_, _) => _viewModel.Presentation.Tick();
+        Activated += (_, _) => UpdatePresentationState();
+        Deactivated += (_, _) => UpdatePresentationState();
+        IsVisibleChanged += (_, _) => UpdatePresentationState();
+        StateChanged += (_, _) => UpdatePresentationState();
+        UpdatePresentationState();
         TitleBar.NavigationToggleRequested += (_, _) => ToggleNavigation();
         _viewModel.ExitRequested += async (_, _) => await ExitAsync();
         _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
@@ -153,8 +160,21 @@ public partial class MainWindow : Window
             new Action(() => UpdateNavigationLayout(animate: false)));
     }
 
+    private void UpdatePresentationState()
+    {
+        _viewModel.Presentation.SetWindowState(IsVisible && WindowState != WindowState.Minimized,
+            IsActive, _viewModel.ReduceUiUpdatesWhenUnfocused);
+        if (_viewModel.Presentation.Interval is { } interval)
+        {
+            _presentationTimer.Interval = interval;
+            _presentationTimer.Start();
+        }
+        else _presentationTimer.Stop();
+    }
+
     private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.ReduceUiUpdatesWhenUnfocused)) UpdatePresentationState();
         if (e.PropertyName == nameof(MainViewModel.SelectedTab))
         {
             var selectedTab = _viewModel.SelectedTab;
@@ -617,6 +637,7 @@ public partial class MainWindow : Window
     {
         if (_trayDisposed) return;
         _trayDisposed = true;
+        _presentationTimer.Stop();
         try
         {
             _trayIcon.Visible = false;

@@ -18,7 +18,7 @@ public enum RpmProfileMode
 
 public sealed record LedProfileSettings
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
     public const string DefaultBindAddress = "0.0.0.0";
     public const int DefaultPort = 1024;
     public const double DefaultFirstLedPercent = 65;
@@ -43,6 +43,8 @@ public sealed record LedProfileSettings
     public string GameTitle { get; init; } = "Auto";
     public TelemetryWatchMode TelemetryWatch { get; init; } = TelemetryWatchMode.Auto;
     public TelemetryGameSettings[] TelemetryGames { get; init; } = [];
+    public bool ReduceUiUpdatesWhenUnfocused { get; init; } = true;
+    public string? PreferredWheelInstanceId { get; init; }
     public string? PreferredWheelId { get; init; }
     public double[] AdvancedThresholds { get; init; } = [];
     public double WindowWidth { get; init; } = 1180;

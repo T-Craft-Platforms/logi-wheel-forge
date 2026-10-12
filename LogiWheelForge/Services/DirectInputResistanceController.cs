@@ -53,11 +53,6 @@ public sealed class DirectInputResistanceController : IWheelResistanceController
         _settings = settings;
         try
         {
-            var targetIds = _definitions.FirstOrDefault(item => item.Id == wheelId)?.ProductIds ??
-                            (wheelId.StartsWith("logitech-", StringComparison.OrdinalIgnoreCase) &&
-                             int.TryParse(wheelId[9..], System.Globalization.NumberStyles.HexNumber, null, out var product)
-                                ? [product] : []);
-            if (targetIds.Length == 0) { Status = "No matching force-feedback device"; return false; }
             var iid = DirectInputId;
             if (DirectInput8Create(GetModuleHandle(null), 0x0800, ref iid,
                     out _directInput, 0) < 0 || _directInput is null)
@@ -68,9 +63,18 @@ public sealed class DirectInputResistanceController : IWheelResistanceController
                 var info = Marshal.PtrToStructure<DeviceInstance>(pointer);
                 var vendor = (int)(info.ProductGuid.ToByteArray()[0] | info.ProductGuid.ToByteArray()[1] << 8);
                 var pid = (int)(info.ProductGuid.ToByteArray()[2] | info.ProductGuid.ToByteArray()[3] << 8);
-                if (vendor != 0x046d || !targetIds.Contains(pid)) return 1;
-                instance = info.InstanceGuid;
-                return 0;
+                if (vendor != 0x046d) return 1;
+                var candidateId = info.InstanceGuid;
+                if (_directInput.CreateDevice(ref candidateId, out var candidate, 0) < 0 || candidate is null) return 1;
+                try
+                {
+                    var path = new GuidAndPath { Size = (uint)Marshal.SizeOf<GuidAndPath>(), HeaderSize = 16, Path = string.Empty };
+                    if (candidate.GetProperty((nint)12, ref path) < 0 ||
+                        NativeWheelIdentity.GetInstanceId(path.Path) != wheelId) return 1;
+                    instance = info.InstanceGuid;
+                    return 0;
+                }
+                finally { Marshal.ReleaseComObject(candidate); }
             }, 0, 0x00000100);
             if (instance is null) { Status = "Wheel driver exposes no force-feedback device"; StopDevice(); return false; }
             var guid = instance.Value;
@@ -279,10 +283,20 @@ public sealed class DirectInputResistanceController : IWheelResistanceController
         [PreserveSig] int EnumDevices(uint type, EnumDeviceCallback callback, nint context, uint flags);
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct GuidAndPath
+    {
+        public uint Size, HeaderSize, Object, How;
+        public Guid Class;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string Path;
+    }
+
     [ComImport, Guid("54D41081-DC15-4833-A41B-748F73A38179"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IDirectInputDevice8
     {
-        void GetCapabilities(); void EnumObjects(); void GetProperty(); void SetProperty();
+        void GetCapabilities(); void EnumObjects();
+        [PreserveSig] int GetProperty(nint property, ref GuidAndPath data);
+        void SetProperty();
         [PreserveSig] int Acquire(); [PreserveSig] int Unacquire();
         void GetDeviceState(); void GetDeviceData();
         [PreserveSig] int SetDataFormat(ref DataFormat format);

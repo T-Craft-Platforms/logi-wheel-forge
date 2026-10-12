@@ -10,13 +10,6 @@
             Style="{StaticResource StatusButtonStyle}"
             ToolTip="System Status">
             <StackPanel Orientation="Horizontal">
-                <Viewbox
-                    Width="16"
-                    Height="16"
-                    Margin="3,0"
-                    Stretch="Uniform">
-                    <fa:IconImage Icon="PowerOff" Style="{StaticResource AppStatusIconStyle}" />
-                </Viewbox>
                 <ContentControl
                     Margin="3,0"
                     Style="{StaticResource WheelStatusIconStyle}"
@@ -50,31 +43,6 @@
                         Margin="0,0,0,8"
                         Style="{StaticResource EyebrowStyle}"
                         Text="SYSTEM STATUS" />
-                    <Grid Margin="0,5,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="28" />
-                            <ColumnDefinition />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <fa:IconImage
-                            Grid.Column="0"
-                            Icon="PowerOff"
-                            Style="{StaticResource AppStatusIconStyle}" />
-                        <StackPanel Grid.Column="1">
-                            <TextBlock FontWeight="SemiBold" Text="LED Indicator" />
-                            <TextBlock
-                                Margin="0,2,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource MutedBrush}"
-                                Text="{Binding AppControlStatusText}" />
-                        </StackPanel>
-                        <TextBlock
-                            Grid.Column="2"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource MutedBrush}"
-                            Text="{Binding AppControlStatus}" />
-                    </Grid>
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="28" />
@@ -86,7 +54,7 @@
                             Style="{StaticResource WheelStatusIconStyle}"
                             Template="{StaticResource WheelGlyphTemplate}" />
                         <StackPanel Grid.Column="1">
-                            <TextBlock FontWeight="SemiBold" Text="LED wheel interface" />
+                            <TextBlock FontWeight="SemiBold" Text="Detected wheel" />
                             <TextBlock
                                 Margin="0,2,0,0"
                                 FontSize="12"

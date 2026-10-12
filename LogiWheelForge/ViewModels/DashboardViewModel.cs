@@ -8,6 +8,9 @@ namespace LogiWheelForge.ViewModels;
 public sealed class DashboardViewModel : ObservableObject, IDisposable
 {
     private readonly LedIndicatorService _service;
+    private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly LatestSnapshot<InputMapperSnapshot> _mapperLatest = new();
+    private readonly IDisposable? _presentation;
     private readonly InputMapperService _mapper;
     private readonly WheelSelectionService _selection;
     private float _currentRpm, _maximumRpm;
@@ -16,16 +19,29 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
     private bool _isFlashing;
 
     public DashboardViewModel(LedIndicatorService service, InputMapperService mapper,
-        WheelSelectionService selection)
+        WheelSelectionService selection, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
     {
         _service = service;
+        Board = new(this);
+        _presentation = presentation?.Register(RefreshPresentation, mounted);
         _mapper = mapper;
         _selection = selection;
         _service.SnapshotChanged += OnSnapshotChanged;
         _mapper.SnapshotChanged += OnMapperSnapshot;
         _selection.ActiveWheelChanged += OnActiveWheelChanged;
+        _selection.DevicesChanged += OnDevicesChanged;
     }
 
+    public DashboardBoardViewModel Board { get; }
+    public Task InitializeLayoutAsync() => Board.InitializeAsync();
+    public ObservableCollection<MappingDiagnosticRow> MappingRows { get; } = [];
+    public IReadOnlyList<WheelInputSample> Inputs { get; private set; } = [];
+    public string ResistanceStatus { get; private set; } = "Resistance is off";
+    public string ResistanceStrengths { get; private set; } = "Enable resistance in a mapping profile";
+    public string ActiveApplication { get; private set; } = "Waiting for a linked application";
+    public ObservableCollection<ConnectedWheel> ConnectedWheels { get; } = [];
+    public bool HasMultipleWheels => ConnectedWheels.Count > 1;
+    public ConnectedWheel? SelectedWheel { get => _selection.ActiveDevice; set { if (value is not null) _selection.SetPreferredWheel(value.InstanceId); } }
     public ObservableCollection<LedIndicatorViewModel> Leds { get; } = [];
 
     public string WheelName
@@ -81,6 +97,8 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        Board.Dispose(); _presentation?.Dispose();
+        _selection.DevicesChanged -= OnDevicesChanged;
         _service.SnapshotChanged -= OnSnapshotChanged;
         _mapper.SnapshotChanged -= OnMapperSnapshot;
         _selection.ActiveWheelChanged -= OnActiveWheelChanged;
@@ -88,14 +106,13 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
 
     private void OnSnapshotChanged(object? sender, AppSnapshot snapshot)
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess()) ApplySnapshot(snapshot);
-        else dispatcher.BeginInvoke(() => ApplySnapshot(snapshot));
+        _latest.Set(snapshot);
+        if (_presentation is null) RefreshPresentation();
     }
 
     private void ApplySnapshot(AppSnapshot snapshot)
     {
-        if (_selection.ActiveWheelId is null) WheelName = snapshot.WheelName;
+        WheelName = _selection.ActiveDevice?.PickerLabel ?? "No wheel detected";
         TelemetryFormat = snapshot.TelemetryFormat;
         CurrentVehicle = snapshot.CurrentVehicle;
         CurrentRpm = snapshot.CurrentRpm;
@@ -109,15 +126,34 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
 
     private void OnActiveWheelChanged(object? sender, string? wheelId)
     {
-        WheelName = wheelId is null ? "No Logitech wheel" :
-            _service.Wheels.FirstOrDefault(wheel => wheel.Id == wheelId)?.DisplayName ??
-            $"Logitech wheel ({wheelId})";
+        WheelName = _selection.ActiveDevice?.PickerLabel ?? "No wheel detected";
     }
-
+    private void OnDevicesChanged(object? sender, WheelDeviceSnapshot snapshot)
+    {
+        ConnectedWheels.Clear(); foreach (var wheel in snapshot.Connected) ConnectedWheels.Add(wheel);
+        OnPropertyChanged(nameof(HasMultipleWheels)); OnPropertyChanged(nameof(SelectedWheel));
+    }
     private void OnMapperSnapshot(object? sender, InputMapperSnapshot snapshot)
     {
-        MapperStatus = snapshot.ActiveProfile is null ? snapshot.Status :
-            $"{snapshot.ActiveProfile}: {snapshot.Status}";
+        _mapperLatest.Set(snapshot);
+        if (_presentation is null) RefreshPresentation();
+    }
+    private void RefreshPresentation()
+    {
+        if (_latest.Value is { } led) ApplySnapshot(led);
+        if (_mapperLatest.Value is { } mapper)
+        {
+            MapperStatus = mapper.ActiveProfile is null ? "Live · " + mapper.Status : $"Live · {mapper.ActiveProfile} · {mapper.Status}";
+            ActiveApplication = mapper.ActiveApplication ?? "Waiting for a linked application";
+            ResistanceStatus = mapper.ForceStatus;
+            var profile = _mapper.Profiles.FirstOrDefault(p => p.Id == mapper.ActiveProfileId);
+            ResistanceStrengths = profile is null ? "Choose a foreground application to see its wheel feel" :
+                $"Center {profile.Resistance.CenterStrength:0}% · Damping {profile.Resistance.DampingStrength:0}% · Detents {profile.Resistance.DetentStrength:0}%";
+            var diagnostics = _mapper.Diagnostics.Snapshot();
+            Inputs = diagnostics.Inputs;
+            MappingDiagnosticRow.Update(MappingRows, profile?.Rules ?? [], diagnostics.Live.Where(a => a.ProfileId == profile?.Id), "Live");
+            foreach (var property in new[] { nameof(Inputs), nameof(ActiveApplication), nameof(ResistanceStatus), nameof(ResistanceStrengths) }) OnPropertyChanged(property);
+        }
     }
 
     private void BuildLeds(WheelDefinition definition, int litGroups)

@@ -106,7 +106,7 @@ public sealed class LedIndicatorService : IAsyncDisposable
         if (_windowInitialized) return;
         _windowInitialized = true;
         _wheelController.Initialize(windowHandle);
-        _wheelController.SetPreferredWheel(Settings.PreferredWheelId);
+        _wheelController.SetPreferredWheel(Settings.PreferredWheelInstanceId);
         _monitorTask = MonitorLoopAsync(_lifetimeCts.Token);
         PublishSnapshot();
     }
@@ -120,7 +120,7 @@ public sealed class LedIndicatorService : IAsyncDisposable
         if (!Settings.ReadyAnimation || !Settings.MinimizeToTray)
             Settings = Settings with { ReadyAnimation = true, MinimizeToTray = true };
         await _redlineLearner.LoadAsync(cancellationToken);
-        _wheelController.SetPreferredWheel(Settings.PreferredWheelId);
+        _wheelController.SetPreferredWheel(Settings.PreferredWheelInstanceId);
         return Settings;
     }
 
@@ -220,7 +220,7 @@ public sealed class LedIndicatorService : IAsyncDisposable
             }
 
             Settings = settings;
-            _wheelController.SetPreferredWheel(settings.PreferredWheelId);
+            _wheelController.SetPreferredWheel(settings.PreferredWheelInstanceId);
             await _settingsStore.SaveAsync(settings, cancellationToken);
             _runtimeError = null;
             PublishSnapshot("Settings applied");

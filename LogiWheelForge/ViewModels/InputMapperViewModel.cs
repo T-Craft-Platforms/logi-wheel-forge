@@ -11,10 +11,10 @@ using LogiWheelForge.Views;
 
 namespace LogiWheelForge.ViewModels;
 
-public sealed class MapperRuleDraft : ObservableObject
+public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
 {
     private MapperRule _value;
-    public MapperRuleDraft(MapperRule rule) => _value = rule;
+    public MapperRuleDraft(MapperRule rule) => _value = MapperOutputValidation.Normalize(rule);
     public string Id => _value.Id;
     public string Control { get => _value.Control; set => Change(_value with { Control = value }); }
     public MapperTriggerKind Trigger { get => _value.Trigger; set => Change(_value with { Trigger = value }); }
@@ -57,20 +57,31 @@ public sealed class MapperRuleDraft : ObservableObject
     public string OutputHint => Action switch
     {
         MapperActionKind.MouseButton => "Choose Left, Right, Middle, X1 or X2.",
-        MapperActionKind.MouseMove => "X moves horizontally; Y moves vertically.",
+        MapperActionKind.MouseMove => "Horizontal moves left/right; Vertical moves up/down.",
         _ => "Type a key name or shortcut, such as Space or LeftCtrl+A."
     };
     public IReadOnlyList<string> OutputChoices => Action switch
     {
         MapperActionKind.MouseButton => ["Left", "Right", "Middle", "X1", "X2"],
-        MapperActionKind.MouseMove => ["X", "Y"],
+        MapperActionKind.MouseMove => ["Horizontal", "Vertical"],
         _ => ["W", "A", "S", "D", "Space", "Enter", "Escape", "Left", "Right", "Up", "Down"]
     };
     public string ValidationMessage => _value.TryValidate(out var error) ? string.Empty : error;
     private static string Label(object value) => (string)new MapperChoiceLabelConverter().Convert(
         value, typeof(string), null!, System.Globalization.CultureInfo.CurrentCulture);
     public string Summary => $"{Control} · {TriggerLabel} → {ActionLabel} {OutputSummary}";
-    public MapperRule Build() => _value;
+    public string Error => ValidationMessage;
+    public string this[string columnName] => columnName switch
+    {
+        nameof(Output) when Action == MapperActionKind.Key && !MapperOutputValidation.IsValidShortcut(Output) => "Enter a valid key or shortcut.",
+        nameof(Output) when Action == MapperActionKind.MouseButton && !MapperOutputValidation.IsMouseButton(Output) => "Choose a supported mouse button.",
+        nameof(Output) when Action == MapperActionKind.MouseMove && MapperOutputValidation.NormalizeMouseAxis(Output) is not ("Horizontal" or "Vertical") => "Choose Horizontal or Vertical.",
+        nameof(StepPercent) when !double.IsFinite(StepPercent) || StepPercent is <= 0 or > 100 => "Use a step greater than 0 and at most 100%.",
+        nameof(MinPercent) or nameof(MaxPercent) when !double.IsFinite(MinPercent) || !double.IsFinite(MaxPercent) || MinPercent < -100 || MaxPercent > 100 || MinPercent >= MaxPercent => "Use an ordered range between −100 and 100%.",
+        nameof(DurationMs) when DurationMs is < 10 or > 5000 => "Use 10–5000 milliseconds.",
+        _ => string.Empty
+    };
+    public MapperRule Build() => MapperOutputValidation.Normalize(_value);
     private void Change(MapperRule value)
     {
         _value = value;
@@ -98,8 +109,13 @@ public sealed class MapperProfileDraft : ObservableObject
         _detentSpacingPercent = profile.Resistance.DetentSpacingPercent;
         _detentHysteresisPercent = profile.Resistance.DetentHysteresisPercent;
         _detentStrength = profile.Resistance.DetentStrength;
-        PropertyChanged += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
-        ProcessPaths.CollectionChanged += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(Name) or nameof(Enabled) or nameof(ResistanceEnabled) or nameof(CenterStrength) or
+                nameof(DampingStrength) or nameof(DetentsEnabled) or nameof(DetentSpacingPercent) or nameof(DetentHysteresisPercent) or nameof(DetentStrength))
+                NotifyChanged();
+        };
+        ProcessPaths.CollectionChanged += (_, _) => NotifyChanged();
         foreach (var rule in Rules) rule.PropertyChanged += OnRuleChanged;
         Rules.CollectionChanged += OnRulesChanged;
     }
@@ -130,20 +146,40 @@ public sealed class MapperProfileDraft : ObservableObject
         }
     };
 
-    private void OnRuleChanged(object? sender, PropertyChangedEventArgs e) => Changed?.Invoke(this, EventArgs.Empty);
+    public string ApplicationsSummary => ProcessPaths.Count == 0 ? "No applications linked" : string.Join(" · ", ProcessPaths.Select(Path.GetFileName));
+    public string EnabledLabel => Enabled ? "Enabled" : "Disabled";
+    public string NameError => string.IsNullOrWhiteSpace(Name) || Name.Length > 64 ? "Enter a profile name of up to 64 characters." : string.Empty;
+    public string ApplicationsError { get; private set; } = string.Empty;
+    public string ResistanceError => BuildResistance().TryValidate() ? string.Empty : "Check the resistance strengths, spacing and hysteresis.";
+    public string SetupWarning => !string.IsNullOrEmpty(NameError) ? NameError : !string.IsNullOrEmpty(ApplicationsError) ? ApplicationsError :
+        !string.IsNullOrEmpty(ResistanceError) ? ResistanceError : Rules.Any(r => r.ValidationMessage.Length > 0) ? "A mapping needs attention" :
+        ProcessPaths.Count == 0 ? "Link an application to go live" : Rules.Count == 0 ? "Add a mapping to get started" : string.Empty;
+    private MapperResistance BuildResistance() => new() { Enabled = ResistanceEnabled, CenterStrength = CenterStrength,
+        DampingStrength = DampingStrength, DetentsEnabled = DetentsEnabled, DetentSpacingPercent = DetentSpacingPercent,
+        DetentHysteresisPercent = DetentHysteresisPercent, DetentStrength = DetentStrength };
+    public void SetApplicationsError(string error) { ApplicationsError = error; OnPropertyChanged(nameof(ApplicationsError)); OnPropertyChanged(nameof(SetupWarning)); }
+    private void NotifyChanged()
+    {
+        foreach (var name in new[] { nameof(ApplicationsSummary), nameof(EnabledLabel), nameof(NameError), nameof(ResistanceError), nameof(SetupWarning) }) OnPropertyChanged(name);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    private void OnRuleChanged(object? sender, PropertyChangedEventArgs e) => NotifyChanged();
     private void OnRulesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)
             foreach (MapperRuleDraft rule in e.OldItems) rule.PropertyChanged -= OnRuleChanged;
         if (e.NewItems is not null)
             foreach (MapperRuleDraft rule in e.NewItems) rule.PropertyChanged += OnRuleChanged;
-        Changed?.Invoke(this, EventArgs.Empty);
+        NotifyChanged();
     }
 }
 
 public sealed class InputMapperViewModel : ObservableObject, IDisposable
 {
     private readonly InputMapperService _service;
+    private readonly RevisionedAutosave<IReadOnlyList<InputMapperProfile>> _autosave;
+    private readonly IDisposable? _presentation;
+    private readonly LatestSnapshot<InputMapperSnapshot> _latest = new();
     private MapperProfileDraft? _selectedProfile;
     private MapperRuleDraft? _selectedRule;
     private string _status = "Input Mapper is stopped", _inputPreview = "Move a wheel control to preview it";
@@ -154,9 +190,15 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     private string _pageTitle = "Input Mapper";
     private int _editorTabIndex;
 
-    public InputMapperViewModel(InputMapperService service)
+    public InputMapperViewModel(InputMapperService service, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
     {
         _service = service;
+        _autosave = new(() => Profiles.Select(p => p.Build()).ToArray(), InputMapperProfileStore.Validate,
+            profiles => _service.SaveProfilesAsync(profiles));
+        _autosave.Changed += OnSaveChanged;
+        _presentation = presentation?.Register(RefreshPresentation, mounted);
+        OpenProfileCommand = new ParameterCommand<MapperProfileDraft>(profile => { SelectedProfile = profile; EditorTabIndex = 0; });
+        BackCommand = new RelayCommand(() => SelectedProfile = null);
         _service.SnapshotChanged += OnSnapshot;
         _service.InputPreview += OnInputPreview;
         AddProfileCommand = new RelayCommand(AddProfile);
@@ -184,6 +226,13 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     public IReadOnlyList<MapperActionMode> Modes { get; } = Enum.GetValues<MapperActionMode>();
     public IReadOnlyList<MapperForceRelease> ForceReleases { get; } = Enum.GetValues<MapperForceRelease>();
     public IReadOnlyList<int> Directions { get; } = [-1, 1];
+    public ICommand OpenProfileCommand { get; }
+    public ICommand BackCommand { get; }
+    public bool IsEditorOpen => SelectedProfile is not null;
+    public string? SaveError => _autosave.Error;
+    public ObservableCollection<MappingDiagnosticRow> ActivityRows { get; } = [];
+    public string ForceStatus { get; private set; } = "Resistance is off";
+    public string ControlAvailability => SelectedRule is null ? string.Empty : _service.AvailableControls.Contains(SelectedRule.Control) ? string.Empty : $"{SelectedRule.Control} is unavailable. Connect the selected wheel or choose an available control.";
     public ICommand AddProfileCommand { get; }
     public ICommand DeleteProfileCommand { get; }
     public ICommand AddRuleCommand { get; }
@@ -202,10 +251,12 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
             SelectedRule = value?.Rules.FirstOrDefault();
             SelectedProcessPath = null;
             ManualProcessPath = string.Empty;
+            OnPropertyChanged(nameof(IsEditorOpen));
+            UpdatePreview();
             RefreshCommands();
         }
     }
-    public MapperRuleDraft? SelectedRule { get => _selectedRule; set { if (SetField(ref _selectedRule, value)) RefreshCommands(); } }
+    public MapperRuleDraft? SelectedRule { get => _selectedRule; set { if (SetField(ref _selectedRule, value)) { OnPropertyChanged(nameof(ControlAvailability)); RefreshCommands(); } } }
     public string? SelectedProcessPath { get => _selectedProcessPath; set { if (SetField(ref _selectedProcessPath, value)) RefreshCommands(); } }
     public string ManualProcessPath { get => _manualProcessPath; set { if (SetField(ref _manualProcessPath, value)) RefreshCommands(); } }
     public string Status { get => _status; private set => SetField(ref _status, value); }
@@ -217,7 +268,7 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
         get => _hasUnsavedChanges;
         private set => SetField(ref _hasUnsavedChanges, value);
     }
-    public string EditStatus => HasUnsavedChanges ? "Unsaved changes" : "All changes saved";
+    public string EditStatus => _autosave.Status;
 
     public void Initialize()
     {
@@ -228,13 +279,16 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
             draft.Changed += OnDraftChanged;
             Profiles.Add(draft);
         }
-        SelectedProfile = Profiles.FirstOrDefault();
+        SelectedProfile = null;
         HasUnsavedChanges = false;
         OnPropertyChanged(nameof(EditStatus));
     }
 
     public void Dispose()
     {
+        _autosave.Dispose(); _presentation?.Dispose();
+        foreach (var profile in Profiles) profile.Changed -= OnDraftChanged;
+        _service.SetPreviewProfile(null);
         _service.SnapshotChanged -= OnSnapshot;
         _service.InputPreview -= OnInputPreview;
     }
@@ -259,14 +313,14 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
         Profiles.Add(draft); SelectedProfile = draft;
         EditorTabIndex = 1;
         MarkUnsaved();
-        Status = "Add a target executable, review the starter rules, then save";
+        Status = "Link an application, then review the starter mappings";
     }
     private void DeleteProfile()
     {
         if (SelectedProfile is null) return;
         SelectedProfile.Changed -= OnDraftChanged;
         Profiles.Remove(SelectedProfile);
-        SelectedProfile = Profiles.FirstOrDefault();
+        SelectedProfile = null;
         MarkUnsaved();
     }
     private void AddRule()
@@ -310,13 +364,29 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
         if (path is null) { Status = "No executable was selected"; return; }
         AddProcess(path);
     }
-    public async Task SaveChangesAsync()
+    public Task SaveChangesAsync() => _autosave.FlushAsync();
+    private void OnSaveChanged(object? sender, EventArgs e)
     {
-        var profiles = Profiles.Select(profile => profile.Build()).ToArray();
-        await _service.SaveProfilesAsync(profiles);
-        Status = "Profiles saved";
-        HasUnsavedChanges = false;
-        OnPropertyChanged(nameof(EditStatus));
+        HasUnsavedChanges = _autosave.IsDirty;
+        OnPropertyChanged(nameof(EditStatus)); OnPropertyChanged(nameof(SaveError));
+    }
+    private void UpdatePreview()
+    {
+        try
+        {
+            var profile = SelectedProfile?.Build();
+            _service.SetPreviewProfile(profile is not null && profile.TryValidate(out _) ? profile : null);
+        }
+        catch (ArgumentException) { _service.SetPreviewProfile(null); }
+    }
+    private void ValidateDrafts()
+    {
+        foreach (var profile in Profiles)
+        {
+            var conflict = profile.ProcessPaths.FirstOrDefault(path => profile.Enabled && Profiles.Any(other =>
+                other != profile && other.Enabled && other.ProcessPaths.Contains(path, StringComparer.OrdinalIgnoreCase)));
+            profile.SetApplicationsError(conflict is null ? string.Empty : $"This application is already linked to another enabled profile: {Path.GetFileName(conflict)}");
+        }
     }
     private void OnDraftChanged(object? sender, EventArgs e) => MarkUnsaved();
     private void RefreshCommands()
@@ -327,21 +397,39 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     }
     private void MarkUnsaved()
     {
-        HasUnsavedChanges = true;
-        OnPropertyChanged(nameof(EditStatus));
+        ValidateDrafts();
+        UpdatePreview();
+        _autosave.Edit();
+        OnPropertyChanged(nameof(ControlAvailability));
     }
     private void OnSnapshot(object? sender, InputMapperSnapshot snapshot)
     {
-        _isRunning = snapshot.IsRunning;
-        Status = snapshot.ActiveProfile is null || snapshot.Status != "Mapping active" ? snapshot.Status :
-            $"{snapshot.ActiveProfile} · {snapshot.ActiveWheel ?? "No wheel"} · {snapshot.ForceStatus}";
-        OnPropertyChanged(nameof(ToggleText));
-        OnPropertyChanged(nameof(IsRunning));
+        _isRunning = snapshot.IsRunning; // Tray commands stay current while presentation is hidden.
+        _latest.Set(snapshot);
+        if (_presentation is null) RefreshPresentation();
     }
     private void OnInputPreview(object? sender, WheelInputSample sample)
     {
-        InputPreview = $"{sample.Control}: {sample.Percent:0.0}%";
-        foreach (var name in _service.AvailableControls)
-            if (!Controls.Contains(name)) Controls.Add(name);
+        if (_presentation is null) RefreshPresentation();
+    }
+    private void RefreshPresentation()
+    {
+        if (_latest.Value is { } snapshot)
+        {
+            Status = snapshot.ActiveProfile is null ? "Live · " + snapshot.Status :
+                $"Live · {snapshot.ActiveProfile} · {snapshot.ActiveApplication} · {snapshot.Status}";
+            ForceStatus = snapshot.ForceStatus;
+            OnPropertyChanged(nameof(ForceStatus));
+        }
+        OnPropertyChanged(nameof(ToggleText)); OnPropertyChanged(nameof(IsRunning));
+        var diagnostics = _service.Diagnostics.Snapshot();
+        InputPreview = diagnostics.Inputs.Count == 0 ? "Preview · move a wheel control to try this profile" :
+            "Preview · " + string.Join(" · ", diagnostics.Inputs.Where(s => !s.IsButton || s.Percent > 0).Select(s => $"{s.Control}: {s.Percent:0.#}%"));
+        var available = _service.AvailableControls.Concat(SelectedProfile?.Rules.Select(r => r.Control) ?? [])
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!Controls.SequenceEqual(available)) { Controls.Clear(); foreach (var control in available) Controls.Add(control); }
+        OnPropertyChanged(nameof(ControlAvailability));
+        MappingDiagnosticRow.Update(ActivityRows, SelectedProfile?.Rules.Select(r => r.Build()).ToArray() ?? [],
+            diagnostics.Preview.Where(a => a.ProfileId == SelectedProfile?.Id), "Preview");
     }
 }

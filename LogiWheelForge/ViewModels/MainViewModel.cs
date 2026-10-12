@@ -12,6 +12,10 @@ namespace LogiWheelForge.ViewModels;
 public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly SettingsDraft _draft = new();
+    private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly IDisposable _presentationSubscription;
+    public PresentationUpdateCoordinator Presentation { get; } = new();
+    public bool ReduceUiUpdatesWhenUnfocused => _draft.ReduceUiUpdatesWhenUnfocused;
     private readonly HashSet<ThresholdViewModel> _observedThresholds = [];
     private readonly LedIndicatorService _service;
     private readonly InputMapperService _mapperService;
@@ -33,10 +37,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _mapperService = mapperService;
         _wheelSelection = wheelSelection;
         _wheelSelection.ActiveWheelChanged += OnSelectedWheelChanged;
-        Dashboard = new DashboardViewModel(service, mapperService, wheelSelection);
-        RpmProfile = new RpmProfileViewModel(service, _draft, SetStatusMessage);
-        Settings = new SettingsViewModel(service, _draft, SetStatusMessage);
-        Mapper = new InputMapperViewModel(mapperService);
+        _presentationSubscription = Presentation.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); });
+        Dashboard = new DashboardViewModel(service, mapperService, wheelSelection, Presentation, () => SelectedTab == 0);
+        RpmProfile = new RpmProfileViewModel(service, _draft, SetStatusMessage, Presentation, () => SelectedTab == 1);
+        Settings = new SettingsViewModel(service, _draft, SetStatusMessage, wheelSelection, Presentation, () => SelectedTab == 3);
+        Mapper = new InputMapperViewModel(mapperService, Presentation, () => SelectedTab == 2);
         Settings.TelemetryChanged += OnTelemetryChanged;
         _draft.PropertyChanged += OnDraftPropertyChanged;
         RpmProfile.Thresholds.CollectionChanged += OnThresholdsCollectionChanged;
@@ -84,6 +89,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (!SetField(ref _selectedTab, value)) return;
             OnPropertyChanged(nameof(SelectedPage));
+            Presentation.RefreshImmediately();
         }
     }
 
@@ -129,7 +135,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public string AppControlStatus => IsRunning ? "Connected" : "Disconnected";
-    public string WheelStatus => !_isWheelConnected ? "Disconnected" : !IsRunning ? "Standby" : "Connected";
+    public string WheelStatus => _wheelSelection.ActiveDevice is null ? "Disconnected" : "Connected";
 
     public string TelemetryStatus => !_isTelemetryConnected
         ? "Disconnected"
@@ -140,8 +146,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string AppControlStatusText => !IsRunning ? "LED Indicator is stopped" :
         State == ReadinessState.Driving ? "RPM lights are active" : "LED Indicator is ready";
 
-    public string WheelStatusText => _isWheelConnected ? $"{WheelName} LED interface connected" :
-        "No LED-capable wheel detected";
+    public string WheelStatusText => _wheelSelection.ActiveDevice?.PickerLabel ?? "No wheel detected";
 
     public string TelemetryStatusText => _isTelemetryConnected && _isRaceOn && _maximumRpm > 0
         ? $"{TelemetryFormat} drive data active"
@@ -176,6 +181,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _service.SnapshotChanged -= OnSnapshotChanged;
+        _presentationSubscription.Dispose();
         Dashboard.Dispose();
         RpmProfile.Dispose();
         Settings.Dispose();
@@ -196,6 +202,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(MinimizeToTray));
         }
 
+        if (e.PropertyName == nameof(SettingsDraft.ReduceUiUpdatesWhenUnfocused)) OnPropertyChanged(nameof(ReduceUiUpdatesWhenUnfocused));
         ScheduleSettingsSave();
     }
 
@@ -280,15 +287,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _draft.UsePointerCursors = settings.UsePointerCursors;
         ThemeService.UsePointerCursors = settings.UsePointerCursors;
         _draft.Theme = settings.Theme;
+        _draft.ReduceUiUpdatesWhenUnfocused = settings.ReduceUiUpdatesWhenUnfocused;
         Settings.Initialize(settings, _service.Wheels.Where(wheel => !wheel.IsPedalSet).ToArray());
         RpmProfile.Initialize(_service.Wheels.FirstOrDefault(x => x.HasLedOutput &&
                 x.Id == settings.PreferredWheelId),
             settings.AdvancedThresholds);
         _service.InitializeWindow(windowHandle);
-        _wheelSelection.SetPreferredWheel(settings.PreferredWheelId);
+        _wheelSelection.SetPreferredWheel(settings.PreferredWheelInstanceId);
         _wheelSelection.Start();
         await _mapperService.InitializeAsync(windowHandle, _wheelSelection.ActiveWheelId);
         Mapper.Initialize();
+        await Dashboard.InitializeLayoutAsync();
         _settingsLoaded = true;
         UpdateSettingsDraftAutoSaveSubscriptions();
         if (IsLedModuleEnabled) await StartServiceWithErrorHandlingAsync();
@@ -329,7 +338,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             MinimizeToTray = _draft.CloseToTray, CloseToTray = _draft.CloseToTray, ReadyAnimation = true,
             Theme = _draft.Theme, UsePointerCursors = _draft.UsePointerCursors,
             ProfileMode = _draft.ProfileMode, LearnPerCarShift = _draft.LearnPerCarShift,
-            GameTitle = "Auto", PreferredWheelId = _draft.SelectedWheel?.Id,
+            GameTitle = "Auto", PreferredWheelId = null,
+            PreferredWheelInstanceId = _wheelSelection.ActiveWheelId,
+            ReduceUiUpdatesWhenUnfocused = _draft.ReduceUiUpdatesWhenUnfocused,
             AdvancedThresholds = RpmProfile.Thresholds.Select(x => x.Value).ToArray()
         };
         if (!settings.TryValidate(out var error))
@@ -341,8 +352,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await _service.UpdateSettingsAsync(settings);
-            _wheelSelection.SetPreferredWheel(settings.PreferredWheelId);
-            _service.SetSelectedWheel(_wheelSelection.ActiveWheelId ?? settings.PreferredWheelId);
+            _wheelSelection.SetPreferredWheel(settings.PreferredWheelInstanceId);
+            _service.SetSelectedWheel(_wheelSelection.ActiveWheelId);
             var wheel = _activeDefinition ?? _service.Wheels.FirstOrDefault(x => x.HasLedOutput &&
                 x.Id == _draft.SelectedWheel?.Id);
             if (wheel is not null)
@@ -405,15 +416,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnSelectedWheelChanged(object? sender, string? wheelId)
     {
-        _service.SetSelectedWheel(wheelId ?? _service.Settings.PreferredWheelId);
-        _mapperService.SetPreferredWheel(wheelId ?? _service.Settings.PreferredWheelId);
+        _service.SetSelectedWheel(wheelId);
+        _mapperService.SetPreferredWheel(wheelId);
+        var device = _wheelSelection.ActiveDevice;
+        _activeDefinition = _service.Wheels.FirstOrDefault(w => w.Id == device?.DefinitionId);
+        _draft.SelectedWheel = _activeDefinition is null ? null : new WheelOption(_activeDefinition.Id, _activeDefinition.DisplayName);
+        WheelName = device?.PickerLabel ?? "No wheel detected";
+        NotifyStatusProperties();
+        ScheduleSettingsSave();
     }
 
     private void OnSnapshotChanged(object? sender, AppSnapshot snapshot)
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess()) ApplySnapshot(snapshot);
-        else dispatcher.BeginInvoke(() => ApplySnapshot(snapshot));
+        _latest.Set(snapshot);
     }
 
     private void ApplySnapshot(AppSnapshot snapshot)
@@ -426,7 +441,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (snapshot.Wheel is not null) _activeDefinition = snapshot.Wheel;
         State = snapshot.State;
         StatusMessage = snapshot.StatusMessage;
-        WheelName = snapshot.WheelName;
+        WheelName = _wheelSelection.ActiveDevice?.PickerLabel ?? "No wheel detected";
         TelemetryFormat = snapshot.TelemetryFormat;
         OnPropertyChanged(nameof(IsRunning));
         NotifyStatusProperties();

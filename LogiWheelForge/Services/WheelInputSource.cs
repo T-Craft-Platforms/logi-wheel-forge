@@ -23,7 +23,7 @@ public sealed class WheelInputSource : IDisposable
     private string? _activePedalPath;
     private readonly HashSet<string> _auxiliaryPaths = new(StringComparer.OrdinalIgnoreCase);
 
-    private sealed record ParsedDevice(string Path, string WheelId, ReportDescriptor Descriptor,
+    private sealed record ParsedDevice(string Path, string WheelId, string InstanceId, ReportDescriptor Descriptor,
         IReadOnlyList<WheelInputControl> Controls, bool IsPedal, bool IsPrimaryWheel);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -58,6 +58,8 @@ public sealed class WheelInputSource : IDisposable
         _activeDevicePath = null;
         _activePedalPath = null;
         _auxiliaryPaths.Clear();
+        AvailableControls = [];
+        RefreshControls();
         ActiveWheelId = null;
         ActiveWheelChanged?.Invoke(this, null);
     }
@@ -77,6 +79,7 @@ public sealed class WheelInputSource : IDisposable
 
     public void CheckPresence()
     {
+        RefreshControls();
         if (_activeDevicePath is null && _activePedalPath is null) return;
         try
         {
@@ -88,6 +91,8 @@ public sealed class WheelInputSource : IDisposable
                 _devices.Clear();
                 ActiveWheelChanged?.Invoke(this, ActiveWheelId);
             }
+            foreach (var handle in _devices.Where(pair => pair.Value is null || !paths.Contains(pair.Value.Path))
+                         .Select(pair => pair.Key).ToArray()) _devices.Remove(handle);
             if (_activeDevicePath is null || paths.Contains(_activeDevicePath)) return;
         }
         catch { return; }
@@ -113,25 +118,19 @@ public sealed class WheelInputSource : IDisposable
             if (!_devices.TryGetValue(deviceHandle, out var device))
             {
                 _devices[deviceHandle] = device = ResolveDevice(deviceHandle);
-                if (device is { IsPedal: true }) _activePedalPath = device.Path;
-                else if (device is { IsPrimaryWheel: true } &&
-                         (_preferredWheelId is null || device.WheelId == _preferredWheelId))
-                {
-                    _activeDevicePath = device.Path;
-                    ActiveWheelId = device.WheelId;
-                    foreach (var auxiliary in _devices.Values.Where(other =>
-                                 other is { IsPedal: false, IsPrimaryWheel: false } &&
-                                 other.WheelId == device.WheelId))
-                        _auxiliaryPaths.Add(auxiliary!.Path);
-                    ActiveWheelChanged?.Invoke(this, ActiveWheelId);
-                }
-                else if (device is not null && device.WheelId == ActiveWheelId)
-                    _auxiliaryPaths.Add(device.Path);
             }
             if (device is null) return 0;
-            if (!device.IsPedal && _preferredWheelId is not null && device.WheelId != _preferredWheelId) return 0;
-            if (device.IsPedal ? _activePedalPath != device.Path || _activeDevicePath is null :
-                _activeDevicePath != device.Path && !_auxiliaryPaths.Contains(device.Path)) return 0;
+            // Selection must run for cached handles as well as newly resolved ones.
+            if (device.IsPedal) _activePedalPath ??= device.Path;
+            else if (device.IsPrimaryWheel && device.InstanceId == _preferredWheelId && _activeDevicePath is null)
+            {
+                _activeDevicePath = device.Path;
+                ActiveWheelId = device.InstanceId;
+                RefreshControls();
+                ActiveWheelChanged?.Invoke(this, ActiveWheelId);
+            }
+            if (!AcceptsDevice(device.InstanceId, device.IsPedal, _preferredWheelId, _activeDevicePath is not null)) return 0;
+            if (device.IsPedal && _activePedalPath != device.Path) return 0;
             var reportLength = Marshal.ReadInt32(buffer, 8 + 2 * IntPtr.Size);
             var count = Marshal.ReadInt32(buffer, 12 + 2 * IntPtr.Size);
             if (reportLength <= 0 || count <= 0 || (long)reportLength * count > size - (16 + 2 * IntPtr.Size))
@@ -193,16 +192,45 @@ public sealed class WheelInputSource : IDisposable
                                   productName.Contains("pedal", StringComparison.OrdinalIgnoreCase);
                     var isPrimaryWheel = !isPedal && descriptor.InputReports.SelectMany(report => report.DataItems)
                         .Any(item => item.Usages.GetAllValues().Any(usage => (uint)usage == 0x00010030));
-                    AvailableControls = AvailableControls.Concat(descriptor.InputReports.SelectMany(report => report.DataItems)
-                        .SelectMany(item => item.Usages.GetAllValues())
-                        .Select(usage => ResolveName((uint)usage, controls, isPedal))).Distinct().ToArray();
-                    return new ParsedDevice(hid.DevicePath, wheelId, descriptor, controls, isPedal, isPrimaryWheel);
+                    return new ParsedDevice(hid.DevicePath, wheelId, NativeWheelIdentity.GetInstanceId(hid.DevicePath),
+                        descriptor, controls, isPedal, isPrimaryWheel);
                 }
                 catch { /* A vendor-only interface may have no readable input descriptor. */ }
             }
         }
         finally { Marshal.FreeHGlobal(info); }
         return null;
+    }
+
+    internal static bool AcceptsDevice(string instanceId, bool isPedal, string? selected, bool hasWheel) =>
+        selected is not null && (isPedal ? hasWheel : instanceId.Equals(selected, StringComparison.OrdinalIgnoreCase));
+
+    private void RefreshControls()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_preferredWheelId is not null)
+        {
+            try
+            {
+                foreach (var hid in DeviceList.Local.GetHidDevices(0x046d))
+                {
+                    var definition = _definitions.FirstOrDefault(w => w.ProductIds.Contains(hid.ProductID));
+                    string productName;
+                    try { productName = hid.GetProductName(); } catch { productName = string.Empty; }
+                    var pedal = definition?.IsPedalSet == true || productName.Contains("pedal", StringComparison.OrdinalIgnoreCase);
+                    if (!pedal && NativeWheelIdentity.GetInstanceId(hid.DevicePath) != _preferredWheelId) continue;
+                    try
+                    {
+                        foreach (var usage in hid.GetReportDescriptor().InputReports.SelectMany(r => r.DataItems)
+                                     .SelectMany(i => i.Usages.GetAllValues()))
+                            names.Add(ResolveName((uint)usage, definition?.InputControls ?? [], pedal));
+                    }
+                    catch { }
+                }
+            }
+            catch { return; }
+        }
+        AvailableControls = names.Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private void Decode(ParsedDevice device, byte[] bytes)
