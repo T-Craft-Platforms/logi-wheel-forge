@@ -45,16 +45,21 @@ public sealed class WindowsInputEmitter : IMapperOutput
         var name = (mouseButton ? "mouse:" : "key:") + output;
         if (!_held.TryGetValue(name, out var count)) return true;
         if (count > 1) { _held[name] = count - 1; return true; }
+        if (!Send(output, true, mouseButton)) return false;
         _held.Remove(name);
-        return Send(output, true, mouseButton);
+        return true;
     }
 
     public void ReleaseAll()
     {
+        var error = (string?)null;
         foreach (var name in _held.Keys.ToArray())
-            Send(name.StartsWith("mouse:", StringComparison.Ordinal) ? name[6..] : name[4..],
-                true, name.StartsWith("mouse:", StringComparison.Ordinal));
-        _held.Clear();
+        {
+            if (Send(name.StartsWith("mouse:", StringComparison.Ordinal) ? name[6..] : name[4..],
+                    true, name.StartsWith("mouse:", StringComparison.Ordinal))) _held.Remove(name);
+            else error = LastError;
+        }
+        LastError = error;
     }
 
     public bool Move(int x, int y) => SendOne(new Input

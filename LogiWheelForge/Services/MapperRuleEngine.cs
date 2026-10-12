@@ -69,11 +69,11 @@ public sealed class MapperRuleEngine
 
     public void Deactivate()
     {
-        if (_profile is not null) foreach (var rule in _profile.Rules) Activity(rule, MappingOutputState.Released);
-        _profile = null;
-        _states.Clear(); _values.Clear(); _pulses.Clear(); _currentPulse = null;
         _output.ReleaseAll();
         _force.Stop();
+        if (_profile is not null) foreach (var rule in _profile.Rules) Activity(rule, MappingOutputState.Released, _output.LastError is null);
+        _profile = null;
+        _states.Clear(); _values.Clear(); _pulses.Clear(); _currentPulse = null;
         _scrollRemainder = 0;
     }
 

@@ -56,6 +56,7 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
     private int _columns = 4;
     private double _width = 880;
     private WidgetPlacement? _drag;
+    private double _pointerLeft, _pointerTop;
     public DashboardBoardViewModel(DashboardViewModel dashboard, DashboardLayoutStore? store = null)
     {
         _dashboard = dashboard; _store = store ?? new();
@@ -78,6 +79,19 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
     public double PreviewTop => (_drag?.Row ?? 0) * (DashboardLayoutEngine.RowHeight + DashboardLayoutEngine.Gap);
     public double PreviewWidth => (_drag?.Width(_columns) ?? 1) * (CellWidth + DashboardLayoutEngine.Gap) - DashboardLayoutEngine.Gap;
     public double PreviewHeight => (_drag?.Height ?? 1) * (DashboardLayoutEngine.RowHeight + DashboardLayoutEngine.Gap) - DashboardLayoutEngine.Gap;
+    public double PointerLeft => _pointerLeft;
+    public double PointerTop => _pointerTop;
+    public string DragTitle => Widgets.FirstOrDefault(w => w.Kind == _drag?.Kind)?.Title ?? string.Empty;
+    public string DragSummary => _drag?.Kind switch
+    {
+        DashboardWidgetKind.Wheel => _dashboard.WheelName,
+        DashboardWidgetKind.Telemetry => _dashboard.CurrentVehicle,
+        DashboardWidgetKind.Rpm => _dashboard.RpmDisplay + " RPM",
+        DashboardWidgetKind.Mapper => _dashboard.MapperStatus,
+        DashboardWidgetKind.Resistance => _dashboard.ResistanceStatus,
+        DashboardWidgetKind.Inputs => "Steering · pedals · buttons",
+        _ => "Control → trigger → action"
+    };
     public bool IsDragging => _drag is not null;
     public ICommand EditCommand { get; }
     public ICommand ResetCommand { get; }
@@ -128,10 +142,11 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
         var widget = Current.First(p => p.Kind == kind);
         Commit(DashboardLayoutEngine.Arrange(Current, _columns, widget with { Column = widget.Column + dx, Row = widget.Row + dy }));
     }
-    public void BeginDrag(DashboardWidgetKind kind) { if (!IsEditing) return; _drag = Current.First(p => p.Kind == kind); NotifyPreview(); }
+    public void BeginDrag(DashboardWidgetKind kind) { if (!IsEditing) return; _drag = Current.First(p => p.Kind == kind); _pointerLeft = PreviewLeft; _pointerTop = PreviewTop; NotifyPreview(); }
     public void DragTo(double x, double y)
     {
         if (_drag is null) return;
+        _pointerLeft = Math.Clamp(x, 0, Math.Max(0, _width - PreviewWidth)); _pointerTop = Math.Max(0, y);
         _drag = _drag with { Column = Math.Clamp((int)Math.Round(x / (CellWidth + 16)), 0, _columns - _drag.Width(_columns)),
             Row = Math.Clamp((int)Math.Round(y / 196), 0, 10000) };
         NotifyPreview();
@@ -144,7 +159,7 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
     public void CancelDrag() { _drag = null; NotifyPreview(); }
     private void NotifyPreview()
     {
-        foreach (var property in new[] { nameof(IsDragging), nameof(PreviewLeft), nameof(PreviewTop), nameof(PreviewWidth), nameof(PreviewHeight) }) OnPropertyChanged(property);
+        foreach (var property in new[] { nameof(IsDragging), nameof(PointerLeft), nameof(PointerTop), nameof(DragTitle), nameof(DragSummary), nameof(PreviewLeft), nameof(PreviewTop), nameof(PreviewWidth), nameof(PreviewHeight) }) OnPropertyChanged(property);
     }
     public void Reset()
     {

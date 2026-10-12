@@ -1,91 +1,282 @@
-<UserControl x:Class="LogiWheelForge.Views.DashboardView"
- xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:controls="clr-namespace:LogiWheelForge.Controls" xmlns:models="clr-namespace:LogiWheelForge.Models"
- PreviewKeyDown="OnPreviewKeyDown">
- <UserControl.Resources>
-  <controls:BooleanVisibilityConverter x:Key="Show"/>
-  <Style x:Key="LedContent" TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style>
-  <Style x:Key="MapperContent" TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsInputMapperModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style>
-  <Style x:Key="LedDisabled" TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/><Setter Property="Text" Value="LED Indicator is disabled. Enable it from its page."/><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
-  <Style x:Key="MapperDisabled" TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/><Setter Property="Text" Value="Input Mapper is disabled. Enable it from its page."/><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsInputMapperModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
-  <DataTemplate x:Key="WheelWidget">
-   <StackPanel><TextBlock FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding WheelName}"/>
-    <ComboBox Margin="0,12,0,0" ItemsSource="{Binding ConnectedWheels}" SelectedItem="{Binding SelectedWheel}" Visibility="{Binding HasMultipleWheels, Converter={StaticResource Show}}" AutomationProperties.Name="Connected wheel"/>
-    <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="Shared across your modules" TextWrapping="Wrap"/>
-   </StackPanel>
-  </DataTemplate>
-  <DataTemplate x:Key="TelemetryWidget"><Grid><TextBlock Style="{StaticResource LedDisabled}"/><Grid Style="{StaticResource LedContent}"><StackPanel><TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding TelemetryFormat}"/><TextBlock Margin="0,10,0,0" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding CurrentVehicle}"/></StackPanel></Grid></Grid></DataTemplate>
-  <DataTemplate x:Key="RpmWidget"><Grid><TextBlock Style="{StaticResource LedDisabled}"/><Grid Style="{StaticResource LedContent}"><StackPanel>
-   <TextBlock FontSize="12" Foreground="{DynamicResource AccentBrush}" Text="{Binding ShiftState}"/>
-   <WrapPanel Margin="0,6,0,0"><TextBlock FontSize="30" FontWeight="SemiBold" Text="{Binding RpmDisplay}"/><TextBlock Margin="8,14,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="{Binding MaximumRpmDisplay}"/></WrapPanel>
-   <ItemsControl Margin="-2,12,0,0" ItemsSource="{Binding Leds}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Border Height="16" Margin="2,0" Background="{Binding Color}" CornerRadius="5" Opacity="{Binding Opacity}"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-  </StackPanel></Grid></Grid></DataTemplate>
-  <DataTemplate x:Key="MapperWidget"><Grid><TextBlock Style="{StaticResource MapperDisabled}"/><Grid Style="{StaticResource MapperContent}"><StackPanel><TextBlock FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding MapperStatus}"/><TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding ActiveApplication}"/></StackPanel></Grid></Grid></DataTemplate>
-  <DataTemplate x:Key="InputsWidget"><Grid><TextBlock Style="{StaticResource MapperDisabled}"/><Grid Style="{StaticResource MapperContent}"><controls:WheelInputDiagram Inputs="{Binding Inputs}" MinHeight="148"/></Grid></Grid></DataTemplate>
-  <DataTemplate x:Key="MappingsWidget"><Grid><TextBlock Style="{StaticResource MapperDisabled}"/><Grid Style="{StaticResource MapperContent}"><StackPanel>
-   <TextBlock FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="Control → trigger → action"/>
-   <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding MappingRows}"><ItemsControl.ItemTemplate><DataTemplate>
-    <Border Margin="0,0,0,8" Padding="10" CornerRadius="10"><Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource ElevatedBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="Transparent"/><Style.Triggers><DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Border.Style>
-     <StackPanel><TextBlock TextWrapping="Wrap" Text="{Binding Summary}"/><TextBlock Margin="0,5,0,0" FontSize="11" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Text="{Binding State}"/></StackPanel>
-    </Border>
-   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-   <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Text="Open a linked application to see live mapping activity."><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding MappingRows.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-  </StackPanel></Grid></Grid></DataTemplate>
-  <DataTemplate x:Key="ResistanceWidget"><Grid><TextBlock Style="{StaticResource MapperDisabled}"/><Grid Style="{StaticResource MapperContent}"><StackPanel><TextBlock FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding ResistanceStatus}"/><TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding ResistanceStrengths}"/></StackPanel></Grid></Grid></DataTemplate>
- </UserControl.Resources>
- <Grid Margin="24,18,24,24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
-  <StackPanel Margin="0,0,0,20"><TextBlock FontSize="30" FontWeight="SemiBold" Text="Dashboard"/><TextBlock Margin="0,5,0,16" Foreground="{DynamicResource MutedBrush}" Text="Your wheel, your workspace."/>
-   <WrapPanel><Button Content="{Binding Board.EditText}" Command="{Binding Board.EditCommand}" Style="{StaticResource SecondaryButton}"/>
-    <Button Margin="12,0,0,0" Content="Add widget" Click="AddWidget_OnClick" Style="{StaticResource SecondaryButton}" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
-    <Button Margin="12,0,0,0" Content="Reset layout" Command="{Binding Board.ResetCommand}" Style="{StaticResource GhostButton}" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
-   </WrapPanel>
-   <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="Drag a handle to move a widget, or use its arrow buttons. Escape cancels a drag." Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
-   <TextBlock Margin="0,8,0,0" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Text="{Binding Board.SaveError}"/>
-   <TextBlock Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding Board.LoadError}"/>
-  </StackPanel>
-  <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
-   <Grid x:Name="BoardSurface" SizeChanged="Board_OnSizeChanged" Height="{Binding Board.BoardHeight}">
-    <ItemsControl ItemsSource="{Binding Board.Widgets}">
-     <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-     <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="Canvas.Left" Value="{Binding Left}"/><Setter Property="Canvas.Top" Value="{Binding Top}"/><Setter Property="Width" Value="{Binding Width}"/><Setter Property="Height" Value="{Binding Height}"/></Style></ItemsControl.ItemContainerStyle>
-     <ItemsControl.ItemTemplate><DataTemplate>
-      <Border Style="{StaticResource CardStyle}" Padding="18" AutomationProperties.Name="{Binding Title}">
-       <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
-        <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" Foreground="{DynamicResource MutedBrush}" Text="{Binding Title}"/>
-        <WrapPanel Grid.Row="1" Margin="0,0,0,12" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}">
-         <Thumb Width="26" Height="26" Margin="0,0,6,0" DragStarted="Drag_OnStarted" DragDelta="Drag_OnDelta" DragCompleted="Drag_OnCompleted" AutomationProperties.Name="Move widget" ToolTip="Drag to move"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource ElevatedBrush}" CornerRadius="6"><TextBlock Text="⠿" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Thumb.Template></Thumb>
-         <Button MinWidth="24" Height="26" Content="←" Command="{Binding MoveLeftCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget left"/>
-         <Button MinWidth="24" Height="26" Content="↑" Command="{Binding MoveUpCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget up"/>
-         <Button MinWidth="24" Height="26" Content="↓" Command="{Binding MoveDownCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget down"/>
-         <Button MinWidth="24" Height="26" Content="→" Command="{Binding MoveRightCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget right"/>
-         <ComboBox MinWidth="76" Height="28" Margin="4,0,0,0" ItemsSource="{Binding Sizes}" SelectedItem="{Binding Size}" AutomationProperties.Name="Widget size"/>
-         <Button MinWidth="24" Height="26" Content="×" Command="{Binding RemoveCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Remove widget"/>
-        </WrapPanel>
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-         <ContentControl Content="{Binding Dashboard}"><ContentControl.Style><Style TargetType="ContentControl"><Setter Property="ContentTemplate" Value="{StaticResource WheelWidget}"/><Style.Triggers>
-          <DataTrigger Binding="{Binding Kind}" Value="Telemetry"><Setter Property="ContentTemplate" Value="{StaticResource TelemetryWidget}"/></DataTrigger>
-          <DataTrigger Binding="{Binding Kind}" Value="Rpm"><Setter Property="ContentTemplate" Value="{StaticResource RpmWidget}"/></DataTrigger>
-          <DataTrigger Binding="{Binding Kind}" Value="Mapper"><Setter Property="ContentTemplate" Value="{StaticResource MapperWidget}"/></DataTrigger>
-          <DataTrigger Binding="{Binding Kind}" Value="Inputs"><Setter Property="ContentTemplate" Value="{StaticResource InputsWidget}"/></DataTrigger>
-          <DataTrigger Binding="{Binding Kind}" Value="Mappings"><Setter Property="ContentTemplate" Value="{StaticResource MappingsWidget}"/></DataTrigger>
-          <DataTrigger Binding="{Binding Kind}" Value="Resistance"><Setter Property="ContentTemplate" Value="{StaticResource ResistanceWidget}"/></DataTrigger>
-         </Style.Triggers></Style></ContentControl.Style></ContentControl>
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:LogiWheelForge.Controls" xmlns:models="clr-namespace:LogiWheelForge.Models" x:Class="LogiWheelForge.Views.DashboardView" PreviewKeyDown="OnPreviewKeyDown">
+    <UserControl.Resources>
+        <controls:BooleanVisibilityConverter x:Key="Show"/>
+        <Style x:Key="LedContent" TargetType="Grid">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MapperContent" TargetType="Grid">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsInputMapperModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="LedDisabled" TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+            <Setter Property="Text" Value="LED Indicator is disabled. Enable it from its page."/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MapperDisabled" TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+            <Setter Property="Text" Value="Input Mapper is disabled. Enable it from its page."/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsInputMapperModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="WheelWidget">
+            <StackPanel>
+                <TextBlock FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding WheelName}"/>
+                <ComboBox Margin="0,12,0,0" ItemsSource="{Binding ConnectedWheels}" SelectedItem="{Binding SelectedWheel}" Visibility="{Binding HasMultipleWheels, Converter={StaticResource Show}}" AutomationProperties.Name="Connected wheel"/>
+                <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="Shared across your modules" TextWrapping="Wrap"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="TelemetryWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource LedDisabled}"/>
+                <Grid Style="{StaticResource LedContent}">
+                    <StackPanel>
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding TelemetryFormat}"/>
+                        <TextBlock Margin="0,10,0,0" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding CurrentVehicle}"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="RpmWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource LedDisabled}"/>
+                <Grid Style="{StaticResource LedContent}">
+                    <StackPanel>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource AccentBrush}" Text="{Binding ShiftState}"/>
+                        <WrapPanel Margin="0,6,0,0">
+                            <TextBlock FontSize="30" FontWeight="SemiBold" Text="{Binding RpmDisplay}"/>
+                            <TextBlock Margin="8,14,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="{Binding MaximumRpmDisplay}"/>
+                        </WrapPanel>
+                        <ItemsControl Margin="-2,12,0,0" ItemsSource="{Binding Leds}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Height="16" Margin="2,0" Background="{Binding Color}" CornerRadius="5" Opacity="{Binding Opacity}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="MapperWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource MapperDisabled}"/>
+                <Grid Style="{StaticResource MapperContent}">
+                    <StackPanel>
+                        <TextBlock FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding MapperStatus}"/>
+                        <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding ActiveApplication}"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="InputsWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource MapperDisabled}"/>
+                <Grid Style="{StaticResource MapperContent}">
+                    <controls:WheelInputDiagram Inputs="{Binding Inputs}" MinHeight="148"/>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="MappingsWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource MapperDisabled}"/>
+                <Grid Style="{StaticResource MapperContent}">
+                    <StackPanel>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="Control → trigger → action"/>
+                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding MappingRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,8" Padding="10" CornerRadius="10">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource ElevatedBrush}"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <TextBlock TextWrapping="Wrap" Text="{Binding Summary}"/>
+                                            <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Text="{Binding State}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Text="Open a linked application to see live mapping activity.">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MappingRows.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="ResistanceWidget">
+            <Grid>
+                <TextBlock Style="{StaticResource MapperDisabled}"/>
+                <Grid Style="{StaticResource MapperContent}">
+                    <StackPanel>
+                        <TextBlock FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding ResistanceStatus}"/>
+                        <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding ResistanceStrengths}"/>
+                        <TextBlock Margin="0,10,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="{Binding ResistanceAvailability}"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid Margin="24,18,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,20">
+            <TextBlock FontSize="30" FontWeight="SemiBold" Text="Dashboard"/>
+            <TextBlock Margin="0,5,0,16" Foreground="{DynamicResource MutedBrush}" Text="Your wheel, your workspace."/>
+            <WrapPanel>
+                <Button Content="{Binding Board.EditText}" Command="{Binding Board.EditCommand}" Style="{StaticResource SecondaryButton}"/>
+                <Button Margin="12,0,0,0" Content="Add widget" Click="AddWidget_OnClick" Style="{StaticResource SecondaryButton}" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
+                <Button Margin="12,0,0,0" Content="Reset layout" Command="{Binding Board.ResetCommand}" Style="{StaticResource GhostButton}" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
+            </WrapPanel>
+            <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Text="Drag a handle to move a widget, or use its arrow buttons. Escape cancels a drag." Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}"/>
+            <TextBlock Margin="0,8,0,0" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Text="{Binding Board.SaveError}"/>
+            <TextBlock Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding Board.LoadError}"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+            <Grid x:Name="BoardSurface" SizeChanged="Board_OnSizeChanged" Height="{Binding Board.BoardHeight}">
+                <ItemsControl ItemsSource="{Binding Board.Widgets}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left" Value="{Binding Left}"/>
+                            <Setter Property="Canvas.Top" Value="{Binding Top}"/>
+                            <Setter Property="Width" Value="{Binding Width}"/>
+                            <Setter Property="Height" Value="{Binding Height}"/>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource CardStyle}" Padding="18" AutomationProperties.Name="{Binding Title}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" Foreground="{DynamicResource MutedBrush}" Text="{Binding Title}"/>
+                                    <WrapPanel Grid.Row="1" Margin="0,0,0,12" Visibility="{Binding Board.IsEditing, Converter={StaticResource Show}}">
+                                        <Thumb Focusable="True" Width="26" Height="26" Margin="0,0,6,0" DragStarted="Drag_OnStarted" DragDelta="Drag_OnDelta" DragCompleted="Drag_OnCompleted" AutomationProperties.Name="Move widget" ToolTip="Drag to move">
+                                            <Thumb.Template>
+                                                <ControlTemplate TargetType="Thumb">
+                                                    <Border Background="{DynamicResource ElevatedBrush}" CornerRadius="6">
+                                                        <TextBlock Text="⠿" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Thumb.Template>
+                                        </Thumb>
+                                        <Button MinWidth="24" Height="26" Content="←" Command="{Binding MoveLeftCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget left"/>
+                                        <Button MinWidth="24" Height="26" Content="↑" Command="{Binding MoveUpCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget up"/>
+                                        <Button MinWidth="24" Height="26" Content="↓" Command="{Binding MoveDownCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget down"/>
+                                        <Button MinWidth="24" Height="26" Content="→" Command="{Binding MoveRightCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Move widget right"/>
+                                        <ComboBox MinWidth="76" Height="28" Margin="4,0,0,0" ItemsSource="{Binding Sizes}" SelectedItem="{Binding Size}" AutomationProperties.Name="Widget size"/>
+                                        <Button MinWidth="24" Height="26" Content="×" Command="{Binding RemoveCommand}" Style="{StaticResource GhostButton}" AutomationProperties.Name="Remove widget"/>
+                                    </WrapPanel>
+                                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ContentControl Content="{Binding Dashboard}">
+                                            <ContentControl.Style>
+                                                <Style TargetType="ContentControl">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource WheelWidget}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Telemetry">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource TelemetryWidget}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Rpm">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource RpmWidget}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Mapper">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource MapperWidget}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Inputs">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource InputsWidget}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Mappings">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource MappingsWidget}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Resistance">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource ResistanceWidget}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ContentControl.Style>
+                                        </ContentControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Canvas IsHitTestVisible="False" Visibility="{Binding Board.IsDragging, Converter={StaticResource Show}}">
+                    <Border Canvas.Left="{Binding Board.PreviewLeft}" Canvas.Top="{Binding Board.PreviewTop}" Width="{Binding Board.PreviewWidth}" Height="{Binding Board.PreviewHeight}" CornerRadius="16" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}"/>
+                    <Border Canvas.Left="{Binding Board.PointerLeft}" Canvas.Top="{Binding Board.PointerTop}" Width="{Binding Board.PreviewWidth}" Height="{Binding Board.PreviewHeight}" Style="{StaticResource CardStyle}" Padding="18" Opacity=".65">
+                        <StackPanel>
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}" Text="{Binding Board.DragTitle}"/>
+                            <TextBlock Margin="0,16,0,0" FontSize="17" TextWrapping="Wrap" Text="{Binding Board.DragSummary}"/>
+                        </StackPanel>
+                    </Border>
+                </Canvas>
+                <Border Style="{StaticResource CardStyle}" Visibility="{Binding Board.IsEmpty, Converter={StaticResource Show}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Viewbox Width="100" Height="64">
+                            <Canvas Width="100" Height="64">
+                                <Rectangle Canvas.Left="0" Canvas.Top="12" Width="40" Height="42" RadiusX="10" RadiusY="10" Fill="{DynamicResource ElevatedBrush}"/>
+                                <Rectangle Canvas.Left="48" Canvas.Top="0" Width="48" Height="28" RadiusX="10" RadiusY="10" Fill="{DynamicResource AccentBrush}" Opacity=".35"/>
+                                <Rectangle Canvas.Left="48" Canvas.Top="36" Width="48" Height="28" RadiusX="10" RadiusY="10" Fill="{DynamicResource ElevatedBrush}"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Margin="0,18,0,8" FontSize="22" FontWeight="SemiBold" Text="A little room for your wheel"/>
+                        <TextBlock Margin="0,0,0,18" TextAlignment="Center" Foreground="{DynamicResource MutedBrush}" Text="Add the widgets you want to make this space yours."/>
+                        <Button HorizontalAlignment="Center" Content="Add widgets" Click="AddWidget_OnClick"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </ScrollViewer>
-       </Grid>
-      </Border>
-     </DataTemplate></ItemsControl.ItemTemplate>
-    </ItemsControl>
-    <Canvas IsHitTestVisible="False" Visibility="{Binding Board.IsDragging, Converter={StaticResource Show}}">
-     <Border Canvas.Left="{Binding Board.PreviewLeft}" Canvas.Top="{Binding Board.PreviewTop}" Width="{Binding Board.PreviewWidth}" Height="{Binding Board.PreviewHeight}" CornerRadius="16" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}">
-      <Border Background="{DynamicResource AccentBrush}" CornerRadius="14" Opacity="0.18"/>
-     </Border>
-    </Canvas>
-    <Border Style="{StaticResource CardStyle}" Visibility="{Binding Board.IsEmpty, Converter={StaticResource Show}}">
-     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"><Viewbox Width="100" Height="64"><Canvas Width="100" Height="64"><Rectangle Canvas.Left="0" Canvas.Top="12" Width="40" Height="42" RadiusX="10" RadiusY="10" Fill="{DynamicResource ElevatedBrush}"/><Rectangle Canvas.Left="48" Canvas.Top="0" Width="48" Height="28" RadiusX="10" RadiusY="10" Fill="{DynamicResource AccentBrush}" Opacity=".35"/><Rectangle Canvas.Left="48" Canvas.Top="36" Width="48" Height="28" RadiusX="10" RadiusY="10" Fill="{DynamicResource ElevatedBrush}"/></Canvas></Viewbox>
-      <TextBlock Margin="0,18,0,8" FontSize="22" FontWeight="SemiBold" Text="A little room for your wheel"/><TextBlock Margin="0,0,0,18" TextAlignment="Center" Foreground="{DynamicResource MutedBrush}" Text="Add the widgets you want to make this space yours."/><Button HorizontalAlignment="Center" Content="Add widgets" Click="AddWidget_OnClick"/>
-     </StackPanel>
-    </Border>
-   </Grid>
-  </ScrollViewer>
- </Grid>
+    </Grid>
 </UserControl>

@@ -22,6 +22,6 @@ public static class MapperOutputValidation
     public static bool IsMouseButton(string? value) => value?.Trim().ToLowerInvariant() is "left" or "right" or "middle" or "x1" or "x2";
     public static MapperRule Normalize(MapperRule rule) => rule with
     {
-        Output = rule.Action == MapperActionKind.MouseMove ? NormalizeMouseAxis(rule.Output) : rule.Output.Trim()
+        Output = rule.Action == MapperActionKind.MouseMove ? NormalizeMouseAxis(rule.Output) : rule.Output?.Trim() ?? string.Empty
     };
 }

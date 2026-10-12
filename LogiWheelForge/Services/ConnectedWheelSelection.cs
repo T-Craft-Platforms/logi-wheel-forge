@@ -22,7 +22,11 @@ public sealed class ConnectedWheelSelection
         if (PreferredInstanceId is not null && selected?.InstanceId != PreferredInstanceId) PreferredInstanceId = selected?.InstanceId;
         var changed = selected?.InstanceId != ActiveWheelId;
         var membershipChanged = !ConnectedDevices.Select(Fingerprint).SequenceEqual(wheels.Select(Fingerprint));
-        ConnectedDevices = wheels;
+        if (!membershipChanged)
+        {
+            selected = ConnectedDevices.FirstOrDefault(w => w.InstanceId == selected?.InstanceId);
+        }
+        else ConnectedDevices = wheels;
         ActiveDevice = selected;
         if (changed) ActiveWheelChanged?.Invoke(this, ActiveWheelId);
         if (changed || membershipChanged) DevicesChanged?.Invoke(this, Snapshot);

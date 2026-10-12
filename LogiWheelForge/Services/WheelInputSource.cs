@@ -9,7 +9,19 @@ namespace LogiWheelForge.Services;
 public sealed record WheelInputSample(string Control, double Percent, bool IsButton);
 
 /// <summary>Reads shared Windows raw HID input; it does not take exclusive device ownership.</summary>
-public sealed class WheelInputSource : IDisposable
+public interface IWheelInputSource : IDisposable
+{
+    event EventHandler<WheelInputSample>? InputReceived;
+    event EventHandler<string>? ErrorOccurred;
+    event EventHandler<string?>? ActiveWheelChanged;
+    string? ActiveWheelId { get; }
+    IReadOnlyCollection<string> AvailableControls { get; }
+    void Initialize(nint windowHandle);
+    void SetPreferredWheel(string? instanceId);
+    void CheckPresence();
+}
+
+public sealed class WheelInputSource : IWheelInputSource
 {
     private const int WmInput = 0x00ff;
     private const uint RidInput = 0x10000003;
@@ -17,19 +29,20 @@ public sealed class WheelInputSource : IDisposable
     private const uint RidevInputSink = 0x00000100;
     private readonly Dictionary<nint, ParsedDevice?> _devices = [];
     private readonly IReadOnlyList<WheelDefinition> _definitions;
+    private readonly Func<string?, IReadOnlyCollection<string>>? _discoverControls;
     private HwndSource? _source;
-    private string? _preferredWheelId;
+    private string? _selectedInstanceId;
     private string? _activeDevicePath;
     private string? _activePedalPath;
-    private readonly HashSet<string> _auxiliaryPaths = new(StringComparer.OrdinalIgnoreCase);
 
-    private sealed record ParsedDevice(string Path, string WheelId, string InstanceId, ReportDescriptor Descriptor,
+    internal sealed record ParsedDevice(string Path, string WheelId, string InstanceId, ReportDescriptor Descriptor,
         IReadOnlyList<WheelInputControl> Controls, bool IsPedal, bool IsPrimaryWheel);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RawInputDevice { public ushort UsagePage, Usage; public uint Flags; public nint Target; }
 
-    public WheelInputSource(IReadOnlyList<WheelDefinition> definitions) => _definitions = definitions;
+    public WheelInputSource(IReadOnlyList<WheelDefinition> definitions, Func<string?, IReadOnlyCollection<string>>? discoverControls = null)
+    { _definitions = definitions; _discoverControls = discoverControls; }
     public event EventHandler<WheelInputSample>? InputReceived;
     public event EventHandler<string>? ErrorOccurred;
     public event EventHandler<string?>? ActiveWheelChanged;
@@ -53,11 +66,10 @@ public sealed class WheelInputSource : IDisposable
 
     public void SetPreferredWheel(string? wheelId)
     {
-        if (string.Equals(_preferredWheelId, wheelId, StringComparison.OrdinalIgnoreCase)) return;
-        _preferredWheelId = wheelId;
+        if (string.Equals(_selectedInstanceId, wheelId, StringComparison.OrdinalIgnoreCase)) return;
+        _selectedInstanceId = wheelId;
         _activeDevicePath = null;
         _activePedalPath = null;
-        _auxiliaryPaths.Clear();
         AvailableControls = [];
         RefreshControls();
         ActiveWheelId = null;
@@ -80,6 +92,7 @@ public sealed class WheelInputSource : IDisposable
     public void CheckPresence()
     {
         RefreshControls();
+        foreach (var handle in _devices.Where(pair => pair.Value is null).Select(pair => pair.Key).ToArray()) _devices.Remove(handle);
         if (_activeDevicePath is null && _activePedalPath is null) return;
         try
         {
@@ -97,7 +110,6 @@ public sealed class WheelInputSource : IDisposable
         }
         catch { return; }
         _activeDevicePath = null;
-        _auxiliaryPaths.Clear();
         ActiveWheelId = null;
         _devices.Clear();
         ActiveWheelChanged?.Invoke(this, null);
@@ -115,22 +127,8 @@ public sealed class WheelInputSource : IDisposable
             if (GetRawInputData(lParam, RidInput, buffer, ref size, (uint)(8 + 2 * IntPtr.Size)) == uint.MaxValue ||
                 Marshal.ReadInt32(buffer) != 2) return 0;
             var deviceHandle = Marshal.ReadIntPtr(buffer, 8);
-            if (!_devices.TryGetValue(deviceHandle, out var device))
-            {
-                _devices[deviceHandle] = device = ResolveDevice(deviceHandle);
-            }
+            var device = ResolveAndSelect(deviceHandle, ResolveDevice);
             if (device is null) return 0;
-            // Selection must run for cached handles as well as newly resolved ones.
-            if (device.IsPedal) _activePedalPath ??= device.Path;
-            else if (device.IsPrimaryWheel && device.InstanceId == _preferredWheelId && _activeDevicePath is null)
-            {
-                _activeDevicePath = device.Path;
-                ActiveWheelId = device.InstanceId;
-                RefreshControls();
-                ActiveWheelChanged?.Invoke(this, ActiveWheelId);
-            }
-            if (!AcceptsDevice(device.InstanceId, device.IsPedal, _preferredWheelId, _activeDevicePath is not null)) return 0;
-            if (device.IsPedal && _activePedalPath != device.Path) return 0;
             var reportLength = Marshal.ReadInt32(buffer, 8 + 2 * IntPtr.Size);
             var count = Marshal.ReadInt32(buffer, 12 + 2 * IntPtr.Size);
             if (reportLength <= 0 || count <= 0 || (long)reportLength * count > size - (16 + 2 * IntPtr.Size))
@@ -146,6 +144,28 @@ public sealed class WheelInputSource : IDisposable
         finally { Marshal.FreeHGlobal(buffer); }
         return 0;
     }
+
+    internal ParsedDevice? ResolveAndSelect(nint handle, Func<nint, ParsedDevice?> resolve)
+    {
+        if (!_devices.TryGetValue(handle, out var device))
+        {
+            _devices[handle] = device = resolve(handle);
+        }
+        if (device is null) return null;
+        // Selection must run for cached handles as well as newly resolved ones.
+        if (device.IsPedal) _activePedalPath ??= device.Path;
+        else if (device.IsPrimaryWheel && device.InstanceId == _selectedInstanceId && _activeDevicePath is null)
+        {
+            _activeDevicePath = device.Path;
+            ActiveWheelId = device.InstanceId;
+            RefreshControls();
+            ActiveWheelChanged?.Invoke(this, ActiveWheelId);
+        }
+        if (!AcceptsDevice(device.InstanceId, device.IsPedal, _selectedInstanceId, _activeDevicePath is not null)) return null;
+        if (device.IsPedal && _activePedalPath != device.Path) return null;
+        return device;
+    }
+
 
     private ParsedDevice? ResolveDevice(nint handle)
     {
@@ -207,8 +227,9 @@ public sealed class WheelInputSource : IDisposable
 
     private void RefreshControls()
     {
+        if (_discoverControls is not null) { AvailableControls = _discoverControls(_selectedInstanceId); return; }
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (_preferredWheelId is not null)
+        if (_selectedInstanceId is not null)
         {
             try
             {
@@ -218,7 +239,7 @@ public sealed class WheelInputSource : IDisposable
                     string productName;
                     try { productName = hid.GetProductName(); } catch { productName = string.Empty; }
                     var pedal = definition?.IsPedalSet == true || productName.Contains("pedal", StringComparison.OrdinalIgnoreCase);
-                    if (!pedal && NativeWheelIdentity.GetInstanceId(hid.DevicePath) != _preferredWheelId) continue;
+                    if (!pedal && NativeWheelIdentity.GetInstanceId(hid.DevicePath) != _selectedInstanceId) continue;
                     try
                     {
                         foreach (var usage in hid.GetReportDescriptor().InputReports.SelectMany(r => r.DataItems)

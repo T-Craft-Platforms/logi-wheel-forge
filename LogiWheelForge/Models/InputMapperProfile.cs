@@ -104,12 +104,12 @@ public sealed record InputMapperProfile
         if (SchemaVersion != CurrentSchemaVersion || string.IsNullOrWhiteSpace(Id) ||
             string.IsNullOrWhiteSpace(Name) || Name.Length > 64)
             error = "Profile name or schema is invalid.";
-        else if (ProcessPaths is null || ProcessPaths.Any(path => !Path.IsPathFullyQualified(path) ||
+        else if (ProcessPaths is null || ProcessPaths.Any(path => path is null || !Path.IsPathFullyQualified(path) ||
                      !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) ||
                  ProcessPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != ProcessPaths.Length)
             error = "Target processes must have distinct full executable paths.";
-        else if (Rules is null || Rules.Select(rule => rule.Id).Distinct().Count() != Rules.Length ||
-                 Rules.Any(rule => !rule.TryValidate(out _)))
+        else if (Rules is null || Rules.Any(rule => rule is null || !rule.TryValidate(out _)) ||
+                 Rules.Select(rule => rule.Id).Distinct().Count() != Rules.Length)
             error = "A mapping rule is invalid or duplicated.";
         else if (Resistance is null || !Resistance.TryValidate())
             error = "Resistance settings are invalid.";

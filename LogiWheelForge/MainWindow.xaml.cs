@@ -597,9 +597,11 @@ public partial class MainWindow : Window
     {
         if (_exiting) return;
         _exiting = true;
+        var profilesFlushed = false;
         try
         {
             await _viewModel.Mapper.SaveChangesAsync();
+            profilesFlushed = true;
             await _viewModel.Dashboard.Board.FlushAsync();
         }
         catch (Exception ex)
@@ -611,7 +613,7 @@ public partial class MainWindow : Window
             if (choice != MessageBoxResult.No)
             {
                 _exiting = false;
-                if (choice == MessageBoxResult.Yes) _viewModel.SelectedTab = 2;
+                if (choice == MessageBoxResult.Yes) _viewModel.SelectedTab = profilesFlushed ? 0 : 2;
                 return;
             }
         }

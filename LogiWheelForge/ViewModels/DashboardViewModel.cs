@@ -9,19 +9,24 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
 {
     private readonly LedIndicatorService _service;
     private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly LatestSnapshot<WheelDeviceSnapshot> _devices = new();
+    private WheelDeviceSnapshot? _appliedDevices;
+    private string? _ledDefinitionId;
     private readonly LatestSnapshot<InputMapperSnapshot> _mapperLatest = new();
     private readonly IDisposable? _presentation;
+    private readonly Func<bool> _ledEnabled, _mapperEnabled;
     private readonly InputMapperService _mapper;
     private readonly WheelSelectionService _selection;
     private float _currentRpm, _maximumRpm;
-    private string _currentVehicle = "No vehicle data", _wheelName = "No Logitech wheel", _telemetryFormat = "—";
+    private string _currentVehicle = "No vehicle data", _wheelName = "No wheel detected", _telemetryFormat = "—";
     private string _mapperStatus = "Stopped";
     private bool _isFlashing;
 
     public DashboardViewModel(LedIndicatorService service, InputMapperService mapper,
-        WheelSelectionService selection, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
+        WheelSelectionService selection, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null, Func<bool>? ledEnabled = null, Func<bool>? mapperEnabled = null)
     {
         _service = service;
+        _ledEnabled = ledEnabled ?? (() => true); _mapperEnabled = mapperEnabled ?? (() => true);
         Board = new(this);
         _presentation = presentation?.Register(RefreshPresentation, mounted);
         _mapper = mapper;
@@ -36,6 +41,7 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
     public Task InitializeLayoutAsync() => Board.InitializeAsync();
     public ObservableCollection<MappingDiagnosticRow> MappingRows { get; } = [];
     public IReadOnlyList<WheelInputSample> Inputs { get; private set; } = [];
+    public string ResistanceAvailability => _mapper.ResistanceAvailability;
     public string ResistanceStatus { get; private set; } = "Resistance is off";
     public string ResistanceStrengths { get; private set; } = "Enable resistance in a mapping profile";
     public string ActiveApplication { get; private set; } = "Waiting for a linked application";
@@ -126,12 +132,13 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
 
     private void OnActiveWheelChanged(object? sender, string? wheelId)
     {
-        WheelName = _selection.ActiveDevice?.PickerLabel ?? "No wheel detected";
+        _devices.Set(_selection.Snapshot);
+        if (_presentation is null) RefreshPresentation();
     }
     private void OnDevicesChanged(object? sender, WheelDeviceSnapshot snapshot)
     {
-        ConnectedWheels.Clear(); foreach (var wheel in snapshot.Connected) ConnectedWheels.Add(wheel);
-        OnPropertyChanged(nameof(HasMultipleWheels)); OnPropertyChanged(nameof(SelectedWheel));
+        _devices.Set(snapshot);
+        if (_presentation is null) RefreshPresentation();
     }
     private void OnMapperSnapshot(object? sender, InputMapperSnapshot snapshot)
     {
@@ -140,8 +147,15 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
     }
     private void RefreshPresentation()
     {
-        if (_latest.Value is { } led) ApplySnapshot(led);
-        if (_mapperLatest.Value is { } mapper)
+        if (_devices.Value is { } devices && !ReferenceEquals(_appliedDevices, devices))
+        {
+            _appliedDevices = devices;
+            ConnectedWheels.Clear(); foreach (var wheel in devices.Connected) ConnectedWheels.Add(wheel);
+            WheelName = devices.Active?.PickerLabel ?? "No wheel detected";
+            OnPropertyChanged(nameof(HasMultipleWheels)); OnPropertyChanged(nameof(SelectedWheel));
+        }
+        if (_ledEnabled() && Board.Widgets.Any(w => w.Kind is DashboardWidgetKind.Rpm or DashboardWidgetKind.Telemetry) && _latest.Value is { } led) ApplySnapshot(led);
+        if (_mapperEnabled() && Board.Widgets.Any(w => w.Kind is DashboardWidgetKind.Mapper or DashboardWidgetKind.Inputs or DashboardWidgetKind.Mappings or DashboardWidgetKind.Resistance) && _mapperLatest.Value is { } mapper)
         {
             MapperStatus = mapper.ActiveProfile is null ? "Live · " + mapper.Status : $"Live · {mapper.ActiveProfile} · {mapper.Status}";
             ActiveApplication = mapper.ActiveApplication ?? "Waiting for a linked application";
@@ -152,14 +166,15 @@ public sealed class DashboardViewModel : ObservableObject, IDisposable
             var diagnostics = _mapper.Diagnostics.Snapshot();
             Inputs = diagnostics.Inputs;
             MappingDiagnosticRow.Update(MappingRows, profile?.Rules ?? [], diagnostics.Live.Where(a => a.ProfileId == profile?.Id), "Live");
-            foreach (var property in new[] { nameof(Inputs), nameof(ActiveApplication), nameof(ResistanceStatus), nameof(ResistanceStrengths) }) OnPropertyChanged(property);
+            foreach (var property in new[] { nameof(Inputs), nameof(ActiveApplication), nameof(ResistanceStatus), nameof(ResistanceStrengths), nameof(ResistanceAvailability) }) OnPropertyChanged(property);
         }
     }
 
     private void BuildLeds(WheelDefinition definition, int litGroups)
     {
-        if (Leds.Count != definition.PhysicalLedCount)
+        if (Leds.Count != definition.PhysicalLedCount || _ledDefinitionId != definition.Id)
         {
+            _ledDefinitionId = definition.Id;
             Leds.Clear();
             for (var i = 0; i < definition.PhysicalLedCount; i++)
             {

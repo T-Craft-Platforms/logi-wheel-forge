@@ -5,13 +5,20 @@ using LogiWheelForge.Models;
 
 namespace LogiWheelForge.Services;
 
+public sealed record MapperForegroundSnapshot(nint Window, string? ProcessPath);
+
 public sealed record InputMapperSnapshot(bool IsRunning, string Status, string? ActiveProfile,
     string? ActiveWheel, string ForceStatus, int DroppedPulses, string? ActiveProfileId = null, string? ActiveApplication = null);
 
 public sealed class InputMapperService : IDisposable
 {
     private readonly InputMapperProfileStore _store;
-    private readonly WheelInputSource _source;
+    private readonly IReadOnlyList<WheelDefinition> _wheels;
+    private ConnectedWheel? _selectedDevice;
+    private readonly IWheelInputSource _source;
+    private readonly Func<MapperForegroundSnapshot>? _foreground;
+    private readonly TimeProvider _clock;
+    private string? _activeApplication;
     private readonly MapperRuleEngine _engine;
     private readonly MapperRuleEngine _previewEngine;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -28,13 +35,16 @@ public sealed class InputMapperService : IDisposable
     private string? _status;
     private bool _initialized;
     private string? _loadError;
-    private string? _lastOutputError;
+    private string? _lastOutputError, _lastForceStatus;
     private DateTimeOffset _nextPresenceCheck;
 
     public InputMapperService(IReadOnlyList<WheelDefinition> wheels, InputMapperProfileStore? store = null,
         IWheelResistanceController? force = null, IMapperOutput? output = null,
-        WheelInputSource? source = null, TimeProvider? clock = null)
+        IWheelInputSource? source = null, TimeProvider? clock = null, Func<MapperForegroundSnapshot>? foreground = null)
     {
+        _wheels = wheels;
+        _clock = clock ?? TimeProvider.System;
+        _foreground = foreground;
         _store = store ?? new InputMapperProfileStore();
         _force = force ?? new DirectInputResistanceController(wheels);
         _source = source ?? new WheelInputSource(wheels);
@@ -53,19 +63,21 @@ public sealed class InputMapperService : IDisposable
             RefreshTarget(); Publish();
         };
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
-        _timer.Tick += (_, _) =>
+        _timer.Tick += (_, _) => Tick();
+    }
+
+    internal void Tick()
+    {
+        if (_clock.GetUtcNow() >= _nextPresenceCheck)
         {
-            if (DateTimeOffset.UtcNow >= _nextPresenceCheck)
-            {
-                _nextPresenceCheck = DateTimeOffset.UtcNow.AddSeconds(1);
-                _source.CheckPresence();
-            }
-            _previewEngine.Tick();
-            if (!IsRunning) return;
-            RefreshTarget();
-            if (_active is not null) _engine.Tick();
-            PublishOutputError();
-        };
+            _nextPresenceCheck = _clock.GetUtcNow().AddSeconds(1);
+            _source.CheckPresence();
+        }
+        _previewEngine.Tick();
+        if (!IsRunning) return;
+        RefreshTarget();
+        if (_active is not null) _engine.Tick();
+        PublishOutputError();
     }
 
     public bool IsRunning { get; private set; }
@@ -99,6 +111,24 @@ public sealed class InputMapperService : IDisposable
         Publish();
     }
 
+    public string ResistanceAvailability
+    {
+        get
+        {
+            if (_selectedDevice is null && _source.ActiveWheelId is null) return "No wheel detected. Connect a wheel to try resistance.";
+            var definition = _wheels.FirstOrDefault(w => w.Id == _selectedDevice?.DefinitionId);
+            if (definition is null) return "Resistance capabilities are unknown. The wheel driver must expose spring or damper effects.";
+            var capabilities = definition.ForceFeedback;
+            if (!capabilities.Spring && !capabilities.Damper) return "This wheel definition declares no resistance effects. Update its definition or use a wheel with spring/damper support.";
+            return $"{_selectedDevice?.DisplayName}: " + (capabilities.Spring ? "spring" : "no spring") + " · " +
+                (capabilities.Damper ? "damper" : "no damper") + ". Close competing force-feedback applications if access is unavailable.";
+        }
+    }
+    public void SetSelectedDevice(ConnectedWheel? device)
+    {
+        _selectedDevice = device;
+        SetPreferredWheel(device?.InstanceId);
+    }
     public void SetPreferredWheel(string? wheelId)
     {
         if (string.Equals(PreferredWheelId, wheelId, StringComparison.OrdinalIgnoreCase)) return;
@@ -136,6 +166,7 @@ public sealed class InputMapperService : IDisposable
         await _saveGate.WaitAsync(cancellationToken);
         try
         {
+            InputMapperProfileStore.Validate(profiles);
             var normalized = InputMapperProfileStore.Normalize(profiles);
             InputMapperProfileStore.Validate(normalized);
             await _store.SaveAsync(normalized, cancellationToken);
@@ -194,19 +225,9 @@ public sealed class InputMapperService : IDisposable
     private void RefreshTarget()
     {
         if (!IsRunning) return;
-        var window = GetForegroundWindow();
-        string? path = null;
-        if (window != 0 && window != _ownWindow)
-        {
-            if (window != _cachedForegroundWindow)
-            {
-                GetWindowThreadProcessId(window, out var processId);
-                _cachedForegroundWindow = window;
-                _cachedForegroundPath = processId == Environment.ProcessId ? null : GetProcessPath(processId);
-            }
-            path = _cachedForegroundPath;
-        }
-        else { _cachedForegroundWindow = 0; _cachedForegroundPath = null; }
+        var foreground = _foreground?.Invoke() ?? ResolveForeground();
+        var window = foreground.Window;
+        var path = window == 0 || window == _ownWindow ? null : foreground.ProcessPath;
         var match = path is null || _source.ActiveWheelId is null ? null : _profiles.FirstOrDefault(profile => profile.Enabled &&
             profile.ProcessPaths.Contains(path, StringComparer.OrdinalIgnoreCase));
         if (match is null && _active is null)
@@ -220,6 +241,7 @@ public sealed class InputMapperService : IDisposable
         if (match?.Id == _active?.Id) return;
         _engine.Deactivate();
         _active = match;
+        _activeApplication = match is null ? null : path;
         if (_active is not null && _source.ActiveWheelId is { } wheelId)
         {
             _engine.Activate(_active, wheelId);
@@ -232,18 +254,37 @@ public sealed class InputMapperService : IDisposable
         Publish();
     }
 
+    private MapperForegroundSnapshot ResolveForeground()
+    {
+        var window = GetForegroundWindow();
+        string? path = null;
+        if (window != 0 && window != _ownWindow)
+        {
+            if (window != _cachedForegroundWindow)
+            {
+                GetWindowThreadProcessId(window, out var processId);
+                _cachedForegroundWindow = window;
+                _cachedForegroundPath = processId == Environment.ProcessId ? null : GetProcessPath(processId);
+            }
+            path = _cachedForegroundPath;
+        }
+        else { _cachedForegroundWindow = 0; _cachedForegroundPath = null; }
+        return new(window, path);
+    }
+
     private void PublishOutputError()
     {
-        if (_lastOutputError == _output.LastError) return;
+        if (_lastOutputError == _output.LastError && _lastForceStatus == _force.Status) return;
         _lastOutputError = _output.LastError;
+        _lastForceStatus = _force.Status;
         if (_lastOutputError is not null) _status = _lastOutputError;
         else if (_active is not null) _status = null;
         Publish();
     }
 
     private void Publish() => SnapshotChanged?.Invoke(this, new InputMapperSnapshot(IsRunning,
-        _loadError ?? (!IsRunning ? "Input Mapper is stopped" : _status ?? "Mapping active"),
-        _active?.Name, _source.ActiveWheelId, _force.Status, _engine.DroppedPulses, _active?.Id, _active is null ? null : _cachedForegroundPath));
+        _loadError ?? _output.LastError ?? (!IsRunning ? "Input Mapper is stopped" : _status ?? "Mapping active"),
+        _active?.Name, _source.ActiveWheelId, _force.Status, _engine.DroppedPulses, _active?.Id, _active is null ? null : _activeApplication));
 
     public static string? GetProcessPath(uint processId)
     {

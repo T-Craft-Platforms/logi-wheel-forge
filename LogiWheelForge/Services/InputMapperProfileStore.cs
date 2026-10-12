@@ -20,15 +20,15 @@ public sealed class InputMapperProfileStore
         if (!File.Exists(_path)) return [];
         await using var stream = File.OpenRead(_path);
         var profiles = await JsonSerializer.DeserializeAsync<InputMapperProfile[]>(stream, Options, cancellationToken) ?? [];
-        profiles = Normalize(profiles);
         Validate(profiles);
+        profiles = Normalize(profiles);
         return profiles;
     }
 
     public async Task SaveAsync(IReadOnlyList<InputMapperProfile> profiles, CancellationToken cancellationToken = default)
     {
-        profiles = Normalize(profiles);
         Validate(profiles);
+        profiles = Normalize(profiles);
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, $"input-mapper.{Guid.NewGuid():N}.tmp");
@@ -49,10 +49,11 @@ public sealed class InputMapperProfileStore
     }
 
     public static InputMapperProfile[] Normalize(IReadOnlyList<InputMapperProfile> profiles) => profiles.Select(profile =>
-        profile with { Rules = profile.Rules.Select(MapperOutputValidation.Normalize).ToArray() }).ToArray();
+        profile with { ProcessPaths = profile.ProcessPaths.ToArray(), Rules = profile.Rules.Select(MapperOutputValidation.Normalize).ToArray() }).ToArray();
 
     public static void Validate(IReadOnlyList<InputMapperProfile> profiles)
     {
+        if (profiles.Any(profile => profile is null)) throw new ArgumentException("Profiles cannot contain null entries.");
         if (profiles.Select(profile => profile.Id).Distinct().Count() != profiles.Count)
             throw new ArgumentException("Profile IDs must be unique.");
         foreach (var profile in profiles)

@@ -28,7 +28,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _isLedModuleEnabled = true, _isInputMapperModuleEnabled = true;
     private CancellationTokenSource? _settingsSaveDelay;
     private ReadinessState _state;
-    private string _statusMessage = "Starting LogiWheel Forge", _wheelName = "No Logitech wheel", _telemetryFormat = "—";
+    private string _statusMessage = "Starting LogiWheel Forge", _wheelName = "No wheel detected", _telemetryFormat = "—";
 
     public MainViewModel(LedIndicatorService service, InputMapperService mapperService,
         WheelSelectionService wheelSelection)
@@ -38,10 +38,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _wheelSelection = wheelSelection;
         _wheelSelection.ActiveWheelChanged += OnSelectedWheelChanged;
         _presentationSubscription = Presentation.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); });
-        Dashboard = new DashboardViewModel(service, mapperService, wheelSelection, Presentation, () => SelectedTab == 0);
-        RpmProfile = new RpmProfileViewModel(service, _draft, SetStatusMessage, Presentation, () => SelectedTab == 1);
+        Dashboard = new DashboardViewModel(service, mapperService, wheelSelection, Presentation, () => SelectedTab == 0, () => IsLedModuleEnabled, () => IsInputMapperModuleEnabled);
+        RpmProfile = new RpmProfileViewModel(service, _draft, SetStatusMessage, Presentation, () => SelectedTab == 1 && IsLedModuleEnabled);
         Settings = new SettingsViewModel(service, _draft, SetStatusMessage, wheelSelection, Presentation, () => SelectedTab == 3);
-        Mapper = new InputMapperViewModel(mapperService, Presentation, () => SelectedTab == 2);
+        Mapper = new InputMapperViewModel(mapperService, Presentation, () => SelectedTab == 2, () => IsInputMapperModuleEnabled);
         Settings.TelemetryChanged += OnTelemetryChanged;
         _draft.PropertyChanged += OnDraftPropertyChanged;
         RpmProfile.Thresholds.CollectionChanged += OnThresholdsCollectionChanged;
@@ -56,7 +56,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand ExitCommand { get; }
     public bool MinimizeToTray => _draft.CloseToTray;
     public bool CloseToTray => _draft.CloseToTray;
-    public bool IsRunning { get; private set; }
+    public bool IsRunning => _service.IsRunning;
 
     public bool IsLedModuleEnabled
     {
@@ -417,12 +417,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnSelectedWheelChanged(object? sender, string? wheelId)
     {
         _service.SetSelectedWheel(wheelId);
-        _mapperService.SetPreferredWheel(wheelId);
         var device = _wheelSelection.ActiveDevice;
+        _mapperService.SetSelectedDevice(device);
         _activeDefinition = _service.Wheels.FirstOrDefault(w => w.Id == device?.DefinitionId);
         _draft.SelectedWheel = _activeDefinition is null ? null : new WheelOption(_activeDefinition.Id, _activeDefinition.DisplayName);
-        WheelName = device?.PickerLabel ?? "No wheel detected";
-        NotifyStatusProperties();
         ScheduleSettingsSave();
     }
 
@@ -433,7 +431,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplySnapshot(AppSnapshot snapshot)
     {
-        IsRunning = snapshot.IsRunning;
         _isWheelConnected = snapshot.IsWheelConnected;
         _isTelemetryConnected = snapshot.IsTelemetryConnected;
         _isRaceOn = snapshot.IsRaceOn;

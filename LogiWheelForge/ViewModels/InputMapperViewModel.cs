@@ -16,6 +16,8 @@ public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
     private MapperRule _value;
     private readonly DraftNumberFields _numbers = new();
     public MapperRuleDraft(MapperRule rule) => _value = MapperOutputValidation.Normalize(rule);
+    private string _activityState = "Preview · Waiting";
+    public string ActivityState { get => _activityState; internal set => SetField(ref _activityState, value); }
     public string Id => _value.Id;
     public string Control { get => _value.Control; set => Change(_value with { Control = value }); }
     public MapperTriggerKind Trigger { get => _value.Trigger; set => Change(_value with { Trigger = value }); }
@@ -182,7 +184,7 @@ public sealed class MapperProfileDraft : ObservableObject
         foreach (var name in new[] { nameof(ApplicationsSummary), nameof(EnabledLabel), nameof(NameError), nameof(ResistanceError), nameof(SetupWarning) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
-    private void OnRuleChanged(object? sender, PropertyChangedEventArgs e) => NotifyChanged();
+    private void OnRuleChanged(object? sender, PropertyChangedEventArgs e) { if (e.PropertyName != nameof(MapperRuleDraft.ActivityState)) NotifyChanged(); }
     private void OnRulesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)
@@ -198,20 +200,24 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     private readonly InputMapperService _service;
     private readonly RevisionedAutosave<IReadOnlyList<InputMapperProfile>> _autosave;
     private readonly IDisposable? _presentation;
+    private readonly Func<bool> _liveMounted;
     private readonly LatestSnapshot<InputMapperSnapshot> _latest = new();
     private MapperProfileDraft? _selectedProfile;
     private MapperRuleDraft? _selectedRule;
     private string _status = "Input Mapper is stopped", _inputPreview = "Move a wheel control to preview it";
     private string _manualProcessPath = string.Empty;
+    private string _applicationInputError = string.Empty;
+    public string ApplicationInputError { get => _applicationInputError; private set => SetField(ref _applicationInputError, value); }
     private string? _selectedProcessPath;
     private bool _isRunning;
     private bool _hasUnsavedChanges;
     private string _pageTitle = "Input Mapper";
     private int _editorTabIndex;
 
-    public InputMapperViewModel(InputMapperService service, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null)
+    public InputMapperViewModel(InputMapperService service, PresentationUpdateCoordinator? presentation = null, Func<bool>? mounted = null, Func<bool>? liveMounted = null)
     {
         _service = service;
+        _liveMounted = liveMounted ?? (() => true);
         _autosave = new(() => Profiles.Select(p => p.Build()).ToArray(), InputMapperProfileStore.Validate,
             profiles => _service.SaveProfilesAsync(profiles));
         _autosave.Changed += OnSaveChanged;
@@ -250,6 +256,7 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     public bool IsEditorOpen => SelectedProfile is not null;
     public string? SaveError => _autosave.Error;
     public ObservableCollection<MappingDiagnosticRow> ActivityRows { get; } = [];
+    public string ResistanceAvailability => _service.ResistanceAvailability;
     public string ForceStatus { get; private set; } = "Resistance is off";
     public string ControlAvailability => SelectedRule is null ? string.Empty : _service.AvailableControls.Contains(SelectedRule.Control) ? string.Empty : $"{SelectedRule.Control} is unavailable. Connect the selected wheel or choose an available control.";
     public ICommand AddProfileCommand { get; }
@@ -277,9 +284,10 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     }
     public MapperRuleDraft? SelectedRule { get => _selectedRule; set { if (SetField(ref _selectedRule, value)) { OnPropertyChanged(nameof(ControlAvailability)); RefreshCommands(); } } }
     public string? SelectedProcessPath { get => _selectedProcessPath; set { if (SetField(ref _selectedProcessPath, value)) RefreshCommands(); } }
-    public string ManualProcessPath { get => _manualProcessPath; set { if (SetField(ref _manualProcessPath, value)) RefreshCommands(); } }
+    public string ManualProcessPath { get => _manualProcessPath; set { if (SetField(ref _manualProcessPath, value)) { ApplicationInputError = string.Empty; RefreshCommands(); } } }
     public string Status { get => _status; private set => SetField(ref _status, value); }
     public string InputPreview { get => _inputPreview; private set => SetField(ref _inputPreview, value); }
+    public string RuntimeStatus => !_service.IsRunning ? "Live · stopped" : "Live · " + (_latest.Value?.Status ?? "Waiting for a foreground target");
     public string ToggleText => _isRunning ? "Stop mapper" : "Start mapper";
     public bool IsRunning => _isRunning;
     public bool HasUnsavedChanges
@@ -360,7 +368,7 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
         if (SelectedProfile is null) return;
         var path = ManualProcessPath.Trim().Trim('"');
         if (!Path.IsPathFullyQualified(path) || !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        { Status = "Enter a full .exe path"; return; }
+        { ApplicationInputError = "Enter a full .exe path, such as C:\\Apps\\Example.exe."; return; }
         AddProcess(path);
         ManualProcessPath = string.Empty;
     }
@@ -368,7 +376,8 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
     {
         if (SelectedProfile is null) return;
         if (SelectedProfile.ProcessPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
-        { Status = "This executable is already in the profile"; return; }
+        { ApplicationInputError = "This executable is already linked to this profile."; return; }
+        ApplicationInputError = string.Empty;
         SelectedProfile.ProcessPaths.Add(path);
     }
     private void RemoveProcess()
@@ -439,8 +448,10 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
                 $"Live · {snapshot.ActiveProfile} · {snapshot.ActiveApplication} · {snapshot.Status}";
             ForceStatus = snapshot.ForceStatus;
             OnPropertyChanged(nameof(ForceStatus));
+            OnPropertyChanged(nameof(ResistanceAvailability));
         }
-        OnPropertyChanged(nameof(ToggleText)); OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(ToggleText)); OnPropertyChanged(nameof(IsRunning)); OnPropertyChanged(nameof(RuntimeStatus));
+        if (!_liveMounted()) return;
         var diagnostics = _service.Diagnostics.Snapshot();
         InputPreview = diagnostics.Inputs.Count == 0 ? "Preview · move a wheel control to try this profile" :
             "Preview · " + string.Join(" · ", diagnostics.Inputs.Where(s => !s.IsButton || s.Percent > 0).Select(s => $"{s.Control}: {s.Percent:0.#}%"));
@@ -450,5 +461,7 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ControlAvailability));
         MappingDiagnosticRow.Update(ActivityRows, SelectedProfile?.Rules.Select(r => r.Snapshot()).ToArray() ?? [],
             diagnostics.Preview.Where(a => a.ProfileId == SelectedProfile?.Id), "Preview");
+        if (SelectedProfile is { } profile) foreach (var rule in profile.Rules)
+            rule.ActivityState = ActivityRows.FirstOrDefault(row => row.Id == rule.Id)?.State ?? "Preview · Waiting";
     }
 }

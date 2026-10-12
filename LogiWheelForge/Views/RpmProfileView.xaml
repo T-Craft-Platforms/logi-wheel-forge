@@ -7,7 +7,7 @@
     <Grid Margin="20,14,20,20">
         <ScrollViewer Padding="4,4,12,4" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <controls:ModuleHeader ModuleName="{Binding PageTitle}" Description="Bring your shift lights to life with live telemetry." Glyph="◉" SwitchName="LED Indicator enabled"
+                <controls:ModuleHeader ModuleName="{Binding PageTitle}" RuntimeStatus="{Binding DataContext.AppControlStatusText, RelativeSource={RelativeSource AncestorType=Window}}" Description="Bring your shift lights to life with live telemetry." Glyph="◉" SwitchName="LED Indicator enabled"
                     ModuleEnabled="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Mode=TwoWay}"/>
                 <controls:ModuleWelcome ModuleName="LED Indicator" Description="See your engine's rhythm on your wheel. Enable LED Indicator to tune your lights and connect game telemetry." Glyph="◉" EnableName="Enable LED Indicator"
                     ModuleEnabled="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Mode=TwoWay}"

@@ -14,6 +14,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly SettingsDraft _draft;
     private readonly WheelSelectionService? _selection;
     private readonly LatestSnapshot<AppSnapshot> _latest = new();
+    private readonly LatestSnapshot<WheelDeviceSnapshot> _devices = new();
     private readonly IDisposable? _presentation;
     private readonly LedIndicatorService _service;
     private readonly Action<string> _setStatus;
@@ -29,7 +30,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _service = service;
         _selection = selection;
         if (selection is not null) selection.DevicesChanged += OnDevicesChanged;
-        _presentation = presentation?.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); }, mounted);
+        _presentation = presentation?.Register(() => { if (_latest.Value is { } snapshot) ApplySnapshot(snapshot); if (_devices.Value is { } devices) ApplyDevices(devices); }, mounted);
         _draft = draft;
         _setStatus = setStatus;
         _startStopCommand = new AsyncRelayCommand(ToggleRunningAsync,
@@ -91,6 +92,16 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public string DetectedWheelName => _selection?.ActiveDevice?.PickerLabel ?? "No wheel detected";
     private void OnDevicesChanged(object? sender, WheelDeviceSnapshot snapshot)
     {
+        _devices.Set(snapshot);
+        if (_presentation is null) ApplyDevices(snapshot);
+    }
+    private WheelDeviceSnapshot? _appliedDevices;
+    private void ApplyDevices(WheelDeviceSnapshot snapshot)
+    {
+        if (ReferenceEquals(_appliedDevices, snapshot)) return;
+        _appliedDevices = snapshot;
+        _activeDefinition = _service.Wheels.FirstOrDefault(w => w.Id == snapshot.Active?.DefinitionId);
+        OnPropertyChanged(nameof(WheelVerification));
         WheelOptions.Clear();
         foreach (var wheel in snapshot.Connected) WheelOptions.Add(wheel);
         OnPropertyChanged(nameof(SelectedWheel));
