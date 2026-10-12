@@ -24,7 +24,11 @@ public sealed class UiInteractionTests
         Exception? failure = null;
         var thread = new Thread(() =>
         {
-            try { ExerciseUi(); }
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+                ExerciseUi();
+            }
             catch (Exception ex) { failure = ex; }
             finally { Application.Current?.Shutdown(); }
         });
@@ -48,6 +52,11 @@ public sealed class UiInteractionTests
         root.Resources.MergedDictionaries.Add(Dictionary("Dark"));
         root.SetResourceReference(Border.BackgroundProperty, "WindowBrush");
 
+        root.Width = 944; root.Height = 704;
+        var renderHost = new Window { Content = root, Width = 944, Height = 704,
+            ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+            DataContext = new ModuleState { IsLedModuleEnabled = true, IsInputMapperModuleEnabled = true } };
+        renderHost.Show();
         Layout(root, 944, 704);
         Render(root, "mapper-empty");
         model.AddProfileCommand.Execute(null);
@@ -124,6 +133,8 @@ public sealed class UiInteractionTests
             }
         }
 
+        Pump(500);
+        Assert.AreEqual("Saved", model.EditStatus, model.SaveError ?? "Autosaving on the UI dispatcher must complete.");
         ExerciseDashboardAndDisabledModules(app, root);
 
         var checkbox = new CheckBox { Content = "Animated switch", Width = 220 };
@@ -152,6 +163,7 @@ public sealed class UiInteractionTests
         module.IsChecked = true;
         Pump(230);
         Assert.AreEqual(20d, ((TranslateTransform)thumb.RenderTransform).X, .01);
+        renderHost.Content = null; renderHost.Close();
     }
 
     private static void ExerciseDashboardAndDisabledModules(Application app, Border root)
@@ -162,9 +174,8 @@ public sealed class UiInteractionTests
         using var mapper = new InputMapperService([], new InputMapperProfileStore(Path.Combine(temporary, "mapper.json")), new InertWheelResistance(), new InertMapperOutput());
         using var selection = new WheelSelectionService([], () => []);
         using var dashboard = new DashboardViewModel(led, mapper, selection);
-        var state = new ModuleState();
-        var host = new Window { DataContext = state, Content = root, ShowInTaskbar = false, WindowStyle = WindowStyle.None };
-        host.Show();
+        var host = Window.GetWindow(root)!;
+        var originalContext = host.DataContext;
         try
         {
             var dashboardView = new DashboardView { DataContext = dashboard };
@@ -192,16 +203,16 @@ public sealed class UiInteractionTests
                     Assert.IsFalse(Descendants<Button>(root).Any(b => b.IsVisible && Equals(b.Content, "Test LEDs")));
                     Render(root, $"led-disabled-{theme}-{width}");
                 }
-                root.Child = dashboardView; Layout(root, 944, 704);
+                root.Child = dashboardView; Layout(root, 944, 704); Pump(30);
                 foreach (var widget in dashboard.Board.Widgets.ToArray()) dashboard.Board.Remove(widget.Kind);
-                Layout(root, 944, 704); Render(root, $"dashboard-empty-{theme}");
+                Pump(30); Layout(root, 944, 704); Render(root, $"dashboard-empty-{theme}");
                 Assert.IsTrue(Descendants<Button>(root).Any(b => b.IsVisible && Equals(b.Content, "Add widgets")));
                 dashboard.Board.Reset();
             }
         }
         finally
         {
-            host.Content = null; host.Close();
+            host.DataContext = originalContext;
             // No receiver was started, so disposal completes synchronously.
             led.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
@@ -248,6 +259,7 @@ public sealed class UiInteractionTests
 
     private static void Layout(FrameworkElement root, double width, double height)
     {
+        if (Window.GetWindow(root) is { } host) { host.Width = width; host.Height = height; }
         root.Width = width;
         root.Height = height;
         root.Measure(new Size(width, height));
