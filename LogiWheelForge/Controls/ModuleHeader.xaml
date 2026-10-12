@@ -25,7 +25,7 @@
         <StackPanel x:Name="ModuleSwitch" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
             <TextBlock Margin="0,0,10,0" VerticalAlignment="Center">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                         <Setter Property="Text" Value="Disabled"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ModuleEnabled, ElementName=Header}" Value="True">

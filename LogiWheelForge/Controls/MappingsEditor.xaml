@@ -44,7 +44,7 @@
             <ContentControl Content="{Binding SelectedRule}">
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
-                        <controls:MapperRuleEditor/>
+                        <controls:MapperRuleEditor Choices="{Binding DataContext, RelativeSource={RelativeSource AncestorType=controls:MappingsEditor}}"/>
                     </DataTemplate>
                 </ContentControl.ContentTemplate>
             </ContentControl>

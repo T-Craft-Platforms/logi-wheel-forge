@@ -81,12 +81,12 @@ public sealed class ConfigurationAndLearningTests
         await File.WriteAllTextAsync(path,
             "{\"SchemaVersion\":2,\"FirstLedPercent\":80,\"RedlinePercent\":97.5,\"CloseToTray\":true}");
         var settings = await new SettingsStore(path).LoadAsync();
-        Assert.AreEqual(5, settings.SchemaVersion);
+        Assert.AreEqual(LedProfileSettings.CurrentSchemaVersion, settings.SchemaVersion);
         Assert.AreEqual(65d, settings.FirstLedPercent);
         Assert.AreEqual(90d, settings.RedlinePercent);
         Assert.IsTrue(settings.CloseToTray);
         var persisted = await File.ReadAllTextAsync(path);
-        StringAssert.Contains(persisted, "\"SchemaVersion\": 5");
+        StringAssert.Contains(persisted, $"\"SchemaVersion\": {LedProfileSettings.CurrentSchemaVersion}");
         File.Delete(path);
     }
 

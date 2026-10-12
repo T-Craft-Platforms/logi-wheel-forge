@@ -64,7 +64,7 @@ public sealed class UiInteractionTests
         var editor = Descendants<MapperRuleEditor>(view).Single();
         var combos = Descendants<ComboBox>(editor).ToArray();
         var control = combos.Single(combo => BindingOperations.GetBinding(combo, ComboBox.TextProperty)?.Path.Path == "Control");
-        Assert.IsTrue(control.Items.Contains("Steering"));
+        Assert.IsTrue(control.Items.Contains("Steering"), $"Control choices: {string.Join(", ", control.Items.Cast<object>())}; model controls: {string.Join(", ", model.Controls)}; choices owner: {editor.Choices?.GetType().Name ?? "missing"}");
         Assert.IsNotNull(control.Template.FindName("PART_EditableTextBox", control), "Custom selector must support typed control names");
         control.SetCurrentValue(ComboBox.TextProperty, "Button12");
         control.GetBindingExpression(ComboBox.TextProperty)!.UpdateSource();

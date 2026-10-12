@@ -1,11 +1,15 @@
 using UserControl = System.Windows.Controls.UserControl;
 using System.Windows;
 using System.Windows.Controls;
+using LogiWheelForge.ViewModels;
 
 namespace LogiWheelForge.Controls;
 
 public partial class MapperRuleEditor : UserControl
 {
+    public static readonly DependencyProperty ChoicesProperty = DependencyProperty.Register(nameof(Choices),
+        typeof(InputMapperViewModel), typeof(MapperRuleEditor), new PropertyMetadata(null));
+    public InputMapperViewModel? Choices { get => (InputMapperViewModel?)GetValue(ChoicesProperty); set => SetValue(ChoicesProperty, value); }
     public MapperRuleEditor() => InitializeComponent();
 
     private void OnEditorSizeChanged(object sender, SizeChangedEventArgs args)
