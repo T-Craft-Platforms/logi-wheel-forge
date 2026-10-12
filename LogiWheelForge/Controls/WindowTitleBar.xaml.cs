@@ -10,6 +10,10 @@ namespace LogiWheelForge.Controls;
 
 public partial class WindowTitleBar : UserControl
 {
+    private (bool IsCompact, bool IsOverlayOpen, bool IsNarrow)? _navigationIconState;
+
+    public event EventHandler? NavigationToggleRequested;
+
     public WindowTitleBar()
     {
         InitializeComponent();
@@ -21,6 +25,33 @@ public partial class WindowTitleBar : UserControl
                 UpdateMaximizeIcon(window);
             }
         };
+    }
+
+    public void SetNavigationIconState(bool isCompact, bool isOverlayOpen, bool isNarrow)
+    {
+        NavigationToggleButton.ToolTip = isOverlayOpen
+            ? "Close navigation"
+            : isCompact ? "Expand navigation" : "Collapse navigation";
+        var nextState = (isCompact, isOverlayOpen, isNarrow);
+        if (_navigationIconState == nextState) return;
+        var animate = _navigationIconState.HasValue;
+        _navigationIconState = nextState;
+        var nextIcon = isNarrow
+            ? isOverlayOpen ? IconChar.Xmark : IconChar.Bars
+            : isCompact ? IconChar.EllipsisVertical : IconChar.Bars;
+        if (!animate || NavigationToggleIcon.Icon == nextIcon)
+        {
+            NavigationToggleIcon.Icon = nextIcon;
+            NavigationToggleIcon.Opacity = 1;
+            return;
+        }
+
+        NavigationIconAnimator.PlayMenuToggle(NavigationToggleIcon, () => NavigationToggleIcon.Icon = nextIcon);
+    }
+
+    private void NavigationToggleButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        NavigationToggleRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

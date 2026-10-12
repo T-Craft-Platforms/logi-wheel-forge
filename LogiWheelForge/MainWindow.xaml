@@ -3,13 +3,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="clr-namespace:LogiWheelForge.Controls"
+    xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     xmlns:views="clr-namespace:LogiWheelForge.Views"
     xmlns:vm="clr-namespace:LogiWheelForge.ViewModels"
     Title="LogiWheel Forge"
     Width="1180"
     Height="760"
-    MinWidth="900"
+    MinWidth="720"
     MinHeight="620"
     Background="{DynamicResource WindowBrush}"
     Icon="Assets/LogiWheelForge.ico"
@@ -25,6 +26,41 @@
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
             <views:SettingsView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:InputMapperViewModel}">
+            <views:InputMapperView />
+        </DataTemplate>
+        <Style x:Key="ModuleNavigationItemStyle" TargetType="RadioButton">
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="MinHeight" Value="46"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="Cursor" Value="{DynamicResource InteractiveCursor}"/>
+            <Setter Property="Padding" Value="16,9"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="9">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ElevatedBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ElevatedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome
@@ -45,11 +81,105 @@
                 <RowDefinition Height="54" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <controls:WindowTitleBar Grid.Row="0" />
-            <ContentPresenter
-                x:Name="PageTransitionPresenter"
-                Grid.Row="1"
-                Content="{Binding SelectedPage}" />
+            <controls:WindowTitleBar x:Name="TitleBar" Grid.Row="0" />
+            <Grid x:Name="MainContentLayout" Grid.Row="1" ClipToBounds="True">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="SidebarColumn" Width="216"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <ContentPresenter x:Name="PageTransitionPresenter" Grid.Column="1" Content="{Binding SelectedPage}"
+                                  ClipToBounds="True" Panel.ZIndex="0"
+                                  controls:TransitionAnimator.IsEnabled="True"
+                                  controls:TransitionAnimator.Index="{Binding SelectedTab}"
+                                  controls:TransitionAnimator.Axis="Vertical"
+                                  controls:TransitionAnimator.Duration="480"
+                                  controls:TransitionAnimator.Distance="150"/>
+                <Border x:Name="NavigationBackdrop" Grid.ColumnSpan="2" Panel.ZIndex="1"
+                        Background="#99090D14" Opacity="0" Visibility="Collapsed"
+                        MouseLeftButtonDown="NavigationBackdrop_OnMouseLeftButtonDown"/>
+                <Border x:Name="SidebarPanel" Grid.Column="0" Panel.ZIndex="2"
+                        HorizontalAlignment="Stretch" Background="{DynamicResource SurfaceBrush}"
+                        Padding="12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <ScrollViewer Grid.Row="0" Padding="0,0,0,10" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <RadioButton x:Name="DashboardNavigationButton" Tag="0" GroupName="MainNavigation"
+                                             Style="{StaticResource ModuleNavigationItemStyle}" IsChecked="True"
+                                             Click="NavigationButton_OnClick" ToolTip="Dashboard">
+                                    <Grid ClipToBounds="True">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition x:Name="DashboardIconColumn" Width="48"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <fa:IconImage x:Name="DashboardNavigationIcon" Grid.Column="0" Width="18" Height="18"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Foreground="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}"
+                                                      Icon="Gauge"/>
+                                        <TextBlock x:Name="DashboardNavigationLabel" Grid.Column="1" Margin="12,0,0,0"
+                                                   Text="Dashboard" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                                    </Grid>
+                                </RadioButton>
+                                <RadioButton x:Name="LedNavigationButton" Tag="1" GroupName="MainNavigation"
+                                             Style="{StaticResource ModuleNavigationItemStyle}" Click="NavigationButton_OnClick"
+                                             ToolTip="LED Indicator">
+                                    <Grid ClipToBounds="True">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition x:Name="LedIconColumn" Width="48"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <fa:IconImage x:Name="LedNavigationIcon" Grid.Column="0" Width="18" Height="18"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Foreground="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}"
+                                                      Icon="Lightbulb"/>
+                                        <TextBlock x:Name="LedNavigationLabel" Grid.Column="1" Margin="12,0,0,0"
+                                                   Text="LED Indicator" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                                    </Grid>
+                                </RadioButton>
+                                <RadioButton x:Name="MapperNavigationButton" Tag="2" GroupName="MainNavigation"
+                                             Style="{StaticResource ModuleNavigationItemStyle}" Click="NavigationButton_OnClick"
+                                             ToolTip="Input Mapper">
+                                    <Grid ClipToBounds="True">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition x:Name="MapperIconColumn" Width="48"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <fa:IconImage x:Name="MapperNavigationIcon" Grid.Column="0" Width="18" Height="18"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Foreground="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}"
+                                                      Icon="ArrowsLeftRight"/>
+                                        <TextBlock x:Name="MapperNavigationLabel" Grid.Column="1" Margin="12,0,0,0"
+                                                   Text="Input Mapper" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                                    </Grid>
+                                </RadioButton>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <RadioButton x:Name="SettingsNavigationButton" Grid.Row="1" Tag="3" GroupName="MainNavigation"
+                                     Margin="0,3,0,3" Style="{StaticResource ModuleNavigationItemStyle}" Click="NavigationButton_OnClick"
+                                     ToolTip="Settings">
+                            <Grid ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="SettingsIconColumn" Width="48"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <fa:IconImage x:Name="SettingsNavigationIcon" Grid.Column="0" Width="18" Height="18"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Foreground="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}"
+                                              Icon="Cog"/>
+                                <TextBlock x:Name="SettingsNavigationLabel" Grid.Column="1" Margin="12,0,0,0"
+                                           Text="Settings" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                            </Grid>
+                        </RadioButton>
+                    </Grid>
+                </Border>
+                <controls:NavigationJunction Grid.ColumnSpan="2" Panel.ZIndex="3" IsHitTestVisible="False"
+                                             SidebarWidth="{Binding ActualWidth, ElementName=SidebarPanel}"
+                                             Radius="16" SurfaceBrush="{DynamicResource SurfaceBrush}"
+                                             BorderBrush="{DynamicResource BorderBrush}"/>
+            </Grid>
         </Grid>
     </Border>
 </Window>

@@ -1,9 +1,9 @@
-using System.Net.Sockets;
+﻿using System.Net.Sockets;
 using LogiWheelForge.Models;
 
 namespace LogiWheelForge.Services;
 
-public sealed class LedApplicationService : IAsyncDisposable
+public sealed class LedIndicatorService : IAsyncDisposable
 {
     private static readonly TimeSpan TelemetryTimeout = TimeSpan.FromSeconds(1);
     private readonly object _frameLock = new();
@@ -25,7 +25,7 @@ public sealed class LedApplicationService : IAsyncDisposable
     private string? _runtimeError;
     private bool _windowInitialized;
 
-    public LedApplicationService(ITelemetryReceiver telemetryReceiver, IWheelLedController wheelController,
+    public LedIndicatorService(ITelemetryReceiver telemetryReceiver, IWheelLedController wheelController,
         SettingsStore settingsStore, TimeProvider? timeProvider = null, SmartRedlineLearner? redlineLearner = null,
         WheelProfileStore? profileStore = null)
     {
@@ -91,6 +91,13 @@ public sealed class LedApplicationService : IAsyncDisposable
     public void SetPreviewWheel(string? wheelId)
     {
         _previewWheelId = wheelId;
+        PublishSnapshot();
+    }
+
+    public void SetSelectedWheel(string? wheelId)
+    {
+        _wheelController.SetPreferredWheel(wheelId);
+        _wheelController.RefreshNow();
         PublishSnapshot();
     }
 
@@ -479,11 +486,14 @@ public sealed class LedApplicationService : IAsyncDisposable
 
     private WheelDefinition? GetPreviewDefinition()
     {
-        return _wheelController.AvailableDefinitions.FirstOrDefault(x =>
+        var selected = _wheelController.AvailableDefinitions.FirstOrDefault(x =>
+            string.Equals(x.Id, _previewWheelId ?? Settings.PreferredWheelId, StringComparison.OrdinalIgnoreCase));
+        if (selected is { HasLedOutput: false }) return null;
+        return _wheelController.AvailableDefinitions.FirstOrDefault(x => x.HasLedOutput &&
                    string.Equals(x.Id, _previewWheelId, StringComparison.OrdinalIgnoreCase))
                ?? _wheelController.AvailableDefinitions.FirstOrDefault(x =>
-                   string.Equals(x.Id, Settings.PreferredWheelId, StringComparison.OrdinalIgnoreCase))
-               ?? _wheelController.AvailableDefinitions.FirstOrDefault();
+                   x.HasLedOutput && string.Equals(x.Id, Settings.PreferredWheelId, StringComparison.OrdinalIgnoreCase))
+               ?? _wheelController.AvailableDefinitions.FirstOrDefault(x => x.HasLedOutput);
     }
 
     private ReadinessState GetState(TelemetryFrame? frame, bool fresh)
