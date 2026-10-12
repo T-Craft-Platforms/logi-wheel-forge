@@ -23,7 +23,7 @@ public sealed class WheelInputDiagram : FrameworkElement
         var accent = (Brush)FindResource("AccentBrush"); var text = (Brush)FindResource("TextBrush");
         var muted = (Brush)FindResource("MutedBrush"); var surface = (Brush)FindResource("ElevatedBrush");
         var steering = inputs.FirstOrDefault(i => i.Control.Equals("Steering", StringComparison.OrdinalIgnoreCase))?.Percent ?? 0;
-        var radius = Math.Max(16, Math.Min(38, ActualWidth / 5));
+        var radius = Math.Max(16, Math.Min(32, ActualWidth / 5));
         var center = new Point(radius + 4, radius + 4);
         dc.DrawEllipse(surface, new Pen(accent, 3), center, radius, radius);
         dc.PushTransform(new RotateTransform(steering * 1.35, center.X, center.Y));
@@ -38,14 +38,14 @@ public sealed class WheelInputDiagram : FrameworkElement
         foreach (var name in new[] { "Accelerator", "Brake", "Clutch" })
         {
             var percent = inputs.FirstOrDefault(i => i.Control.Equals(name, StringComparison.OrdinalIgnoreCase))?.Percent ?? 0;
-            var y = line++ * 35d;
-            DrawText(dc, $"{name}  {percent:0}%", new Point(x, y), text, 11);
+            var y = line++ * 28d;
+            DrawText(dc, $"{(name == "Accelerator" ? "Gas" : name)}  {percent:0}%", new Point(x, y), text, 11, barWidth);
             dc.DrawRoundedRectangle(surface, null, new Rect(x, y + 19, barWidth, 5), 2, 2);
             dc.DrawRoundedRectangle(accent, null, new Rect(x, y + 19, barWidth * Math.Clamp(percent / 100, 0, 1), 5), 2, 2);
         }
         var buttons = inputs.Where(i => i.IsButton && i.Percent > 0).Select(i => i.Control).ToArray();
         var label = buttons.Length == 0 ? "Buttons · none pressed" : string.Join(" · ", buttons);
-        if (ActualHeight >= 136) DrawText(dc, label, new Point(4, 122), accent, 11, Math.Max(10, ActualWidth - 8));
+        if (ActualHeight >= 110) DrawText(dc, label, new Point(4, 96), accent, 11, Math.Max(10, ActualWidth - 8));
         System.Windows.Automation.AutomationProperties.SetName(this,
             $"Wheel inputs. Steering {steering:0} percent. " + string.Join(". ", inputs.Where(i => !i.IsButton).Select(i => $"{i.Control} {i.Percent:0} percent")) + ". " + label);
     }

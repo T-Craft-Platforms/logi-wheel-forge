@@ -96,7 +96,7 @@
             <Grid>
                 <TextBlock Style="{StaticResource MapperDisabled}"/>
                 <Grid Style="{StaticResource MapperContent}">
-                    <controls:WheelInputDiagram Inputs="{Binding Inputs}" MinHeight="148"/>
+                    <controls:WheelInputDiagram Inputs="{Binding Inputs}" MinHeight="112"/>
                 </Grid>
             </Grid>
         </DataTemplate>

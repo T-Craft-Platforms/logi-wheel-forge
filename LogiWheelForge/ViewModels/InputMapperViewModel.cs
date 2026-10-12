@@ -457,7 +457,10 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
             "Preview · " + string.Join(" · ", diagnostics.Inputs.Where(s => !s.IsButton || s.Percent > 0).Select(s => $"{s.Control}: {s.Percent:0.#}%"));
         var available = _service.AvailableControls.Concat(SelectedProfile?.Rules.Select(r => r.Control) ?? [])
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (!Controls.SequenceEqual(available)) { Controls.Clear(); foreach (var control in available) Controls.Add(control); }
+        // Resetting this collection clears editable ComboBox.Text and writes an empty control back into the draft.
+        // Add arrivals first and remove only obsolete choices; every configured control stays selectable.
+        foreach (var control in available) if (!Controls.Contains(control)) Controls.Add(control);
+        foreach (var obsolete in Controls.Where(c => !available.Contains(c, StringComparer.OrdinalIgnoreCase)).ToArray()) Controls.Remove(obsolete);
         OnPropertyChanged(nameof(ControlAvailability));
         MappingDiagnosticRow.Update(ActivityRows, SelectedProfile?.Rules.Select(r => r.Snapshot()).ToArray() ?? [],
             diagnostics.Preview.Where(a => a.ProfileId == SelectedProfile?.Id), "Preview");

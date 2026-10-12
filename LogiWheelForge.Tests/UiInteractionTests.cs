@@ -173,12 +173,14 @@ public sealed class UiInteractionTests
                 app.Resources.MergedDictionaries[0] = Dictionary(theme); root.Resources.MergedDictionaries[0] = Dictionary(theme);
                 foreach (var width in new[] { 608d, 944d, 1320d })
                 {
+                    host.DataContext = new ModuleState { IsLedModuleEnabled = true, IsInputMapperModuleEnabled = true };
                     root.Child = dashboardView; Layout(root, width, 704); Pump(30); Render(root, $"dashboard-{theme}-{width}");
                     Assert.AreEqual(6, dashboard.Board.Widgets.Count);
                     dashboard.Board.IsEditing = true; Layout(root, width, 704); Pump(30);
                     var handle = Descendants<Thumb>(dashboardView).First(t => System.Windows.Automation.AutomationProperties.GetName(t) == "Move widget");
                     Assert.IsTrue(handle.Focusable);
                     Render(root, $"dashboard-edit-{theme}-{width}"); dashboard.Board.IsEditing = false;
+                    host.DataContext = new ModuleState();
                     using var mapperModel = new InputMapperViewModel(mapper); mapperModel.Initialize();
                     root.Child = new InputMapperView { DataContext = mapperModel }; Layout(root, width, 704); Pump(30);
                     Assert.IsTrue(Descendants<ModuleWelcome>(root).Single().IsVisible);
