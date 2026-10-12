@@ -597,22 +597,22 @@ public partial class MainWindow : Window
     {
         if (_exiting) return;
         _exiting = true;
-        if (_viewModel.Mapper.HasUnsavedChanges)
+        try
+        {
+            await _viewModel.Mapper.SaveChangesAsync();
+            await _viewModel.Dashboard.Board.FlushAsync();
+        }
+        catch (Exception ex)
         {
             RestoreWindow();
-            var choice = System.Windows.MessageBox.Show(this, "Save Input Mapper profile changes before exiting?",
-                "Unsaved profiles", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (choice == MessageBoxResult.Cancel) { _exiting = false; return; }
-            if (choice == MessageBoxResult.Yes)
+            var choice = System.Windows.MessageBox.Show(this,
+                $"Some changes need attention: {ex.Message}\n\nYes: return to correct them.\nNo: discard unsaved changes and exit.\nCancel: keep the app open.",
+                "Changes need attention", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            if (choice != MessageBoxResult.No)
             {
-                try { await _viewModel.Mapper.SaveChangesAsync(); }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show(this, ex.Message, "Could not save profiles",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
-                    _exiting = false;
-                    return;
-                }
+                _exiting = false;
+                if (choice == MessageBoxResult.Yes) _viewModel.SelectedTab = 2;
+                return;
             }
         }
         _allowClose = true;
@@ -622,8 +622,7 @@ public partial class MainWindow : Window
             var save = _viewModel.SaveWindowPlacementAsync(bounds.Width, bounds.Height, bounds.Left, bounds.Top,
                 WindowState == WindowState.Maximized);
             await Task.WhenAny(save, Task.Delay(TimeSpan.FromSeconds(2)));
-            var dispose = _viewModel.DisposeAsync().AsTask();
-            await Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(2)));
+            await _viewModel.DisposeAsync();
         }
         finally
         {

@@ -3,29 +3,17 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="clr-namespace:LogiWheelForge.Controls">
+    <UserControl.Resources><controls:BooleanVisibilityConverter x:Key="ShowModule"/><controls:BooleanVisibilityConverter x:Key="HideModule" Invert="True"/></UserControl.Resources>
     <Grid Margin="20,14,20,20">
         <ScrollViewer Padding="4,4,12,4" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <Grid Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        FontSize="30"
-                        FontWeight="Bold"
-                        Text="{Binding PageTitle}" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
-                        <Button Margin="0,0,14,0" Command="{Binding TestLedsCommand}"
-                                Content="Test LEDs" Style="{StaticResource SecondaryButton}" />
-                        <TextBlock Margin="0,0,10,0" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource MutedBrush}" Text="MODULE" />
-                        <ToggleButton Style="{DynamicResource ModuleToggleStyle}"
-                                      IsChecked="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
-                                      ToolTip="Enable or disable the LED Indicator module" />
-                    </StackPanel>
-                </Grid>
+                <controls:ModuleHeader ModuleName="{Binding PageTitle}" Description="Bring your shift lights to life with live telemetry." Glyph="◉" SwitchName="LED Indicator enabled"
+                    ModuleEnabled="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Mode=TwoWay}"/>
+                <controls:ModuleWelcome ModuleName="LED Indicator" Description="See your engine's rhythm on your wheel. Enable LED Indicator to tune your lights and connect game telemetry." Glyph="◉" EnableName="Enable LED Indicator"
+                    ModuleEnabled="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Mode=TwoWay}"
+                    Visibility="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Converter={StaticResource HideModule}}"/>
+                <StackPanel Visibility="{Binding DataContext.IsLedModuleEnabled, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=True, Converter={StaticResource ShowModule}}">
+                <Button HorizontalAlignment="Left" Margin="0,0,0,16" Command="{Binding TestLedsCommand}" Content="Test LEDs" Style="{StaticResource SecondaryButton}"/>
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <Grid Margin="0,0,0,24">
@@ -256,6 +244,7 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

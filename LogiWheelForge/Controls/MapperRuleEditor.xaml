@@ -1,6 +1,6 @@
 <UserControl x:Class="LogiWheelForge.Controls.MapperRuleEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:LogiWheelForge.Views">
     <UserControl.Resources>
         <ResourceDictionary><ResourceDictionary.MergedDictionaries>
             <ResourceDictionary Source="../Themes/MapperControls.xaml" />
@@ -14,25 +14,25 @@
                 <TextBlock Style="{StaticResource EyebrowStyle}" Text="WHEN THIS HAPPENS" />
                 <TextBlock Style="{StaticResource MapperLabel}" Text="Wheel control" />
                 <ComboBox IsEditable="True" Text="{Binding Control, UpdateSourceTrigger=PropertyChanged}"
-                          ItemsSource="{Binding DataContext.Controls, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}"
+                          ItemsSource="{Binding DataContext.Controls, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}"
                           ToolTip="Choose a detected control, or type its name (for example Button1)." />
                 <TextBlock Style="{StaticResource MapperLabel}" Text="Trigger" />
-                <ComboBox SelectedItem="{Binding Trigger}" ItemsSource="{Binding DataContext.Triggers, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                <ComboBox SelectedItem="{Binding Trigger}" ItemsSource="{Binding DataContext.Triggers, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                 <Grid Visibility="{Binding IsStepTrigger, Converter={StaticResource ShowWhenTrue}}">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition /></Grid.ColumnDefinitions>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Direction" />
-                    <ComboBox Grid.Row="1" Margin="0,0,8,0" SelectedItem="{Binding Direction}" ItemsSource="{Binding DataContext.Directions, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                    <ComboBox Grid.Row="1" Margin="0,0,8,0" SelectedItem="{Binding Direction}" ItemsSource="{Binding DataContext.Directions, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                     <TextBlock Grid.Column="1" Style="{StaticResource MapperLabel}" Text="Step (%)" />
-                    <TextBox Grid.Column="1" Grid.Row="1" Text="{Binding StepPercent, ValidatesOnExceptions=True}" />
+                    <TextBox Grid.Column="1" Grid.Row="1" Text="{Binding StepPercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                 </Grid>
                 <StackPanel Visibility="{Binding IsRangeTrigger, Converter={StaticResource ShowWhenTrue}}">
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Active range (%)" />
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding MinPercent, ValidatesOnExceptions=True}" ToolTip="Minimum percentage" />
+                        <TextBox Text="{Binding MinPercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" ToolTip="Minimum percentage" />
                         <TextBlock Grid.Column="1" Text="to" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Grid.Column="2" Text="{Binding MaxPercent, ValidatesOnExceptions=True}" ToolTip="Maximum percentage" />
+                        <TextBox Grid.Column="2" Text="{Binding MaxPercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" ToolTip="Maximum percentage" />
                     </Grid>
                 </StackPanel>
             </StackPanel>
@@ -41,27 +41,27 @@
             <StackPanel>
                 <TextBlock Style="{StaticResource EyebrowStyle}" Text="DO THIS" />
                 <TextBlock Style="{StaticResource MapperLabel}" Text="Output action" />
-                <ComboBox SelectedItem="{Binding Action}" ItemsSource="{Binding DataContext.Actions, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                <ComboBox SelectedItem="{Binding Action}" ItemsSource="{Binding DataContext.Actions, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                 <StackPanel Visibility="{Binding UsesOutput, Converter={StaticResource ShowWhenTrue}}">
                     <TextBlock Style="{StaticResource MapperLabel}" Text="{Binding OutputLabel}" />
-                    <ComboBox IsEditable="True" Text="{Binding Output, UpdateSourceTrigger=PropertyChanged}" ItemsSource="{Binding OutputChoices}" />
+                    <ComboBox IsEditable="True" Text="{Binding Output, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" ItemsSource="{Binding OutputChoices}" />
                     <TextBlock Margin="0,6,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" Text="{Binding OutputHint}" />
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsKeyOrButtonAction, Converter={StaticResource ShowWhenTrue}}">
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Behavior" />
-                    <ComboBox SelectedItem="{Binding Mode}" ItemsSource="{Binding DataContext.Modes, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                    <ComboBox SelectedItem="{Binding Mode}" ItemsSource="{Binding DataContext.Modes, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsMovementAction, Converter={StaticResource ShowWhenTrue}}">
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Movement / scroll scale" />
-                    <TextBox Text="{Binding OutputScale, ValidatesOnExceptions=True}" />
+                    <TextBox Text="{Binding OutputScaleText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsHoldTargetAction, Converter={StaticResource ShowWhenTrue}}">
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Hold strength (%)" />
                     <Slider Minimum="0" Maximum="100" Value="{Binding ForceStrength}" />
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Target position (%)" />
-                    <TextBox Text="{Binding TargetPercent, ValidatesOnExceptions=True}" />
+                    <TextBox Text="{Binding TargetPercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                     <TextBlock Style="{StaticResource MapperLabel}" Text="Release the hold" />
-                    <ComboBox SelectedItem="{Binding ForceRelease}" ItemsSource="{Binding DataContext.ForceReleases, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                    <ComboBox SelectedItem="{Binding ForceRelease}" ItemsSource="{Binding DataContext.ForceReleases, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                 </StackPanel>
                 <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource WarningBrush}"
                            Visibility="{Binding IsForceAction, Converter={StaticResource ShowWhenTrue}}"
@@ -73,21 +73,21 @@
                 <StackPanel>
                     <StackPanel Visibility="{Binding IsStepTrigger, Converter={StaticResource ShowWhenTrue}}">
                         <TextBlock Style="{StaticResource MapperLabel}" Text="Step behavior" />
-                        <ComboBox SelectedItem="{Binding StepMode}" ItemsSource="{Binding DataContext.StepModes, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}" />
+                        <ComboBox SelectedItem="{Binding StepMode}" ItemsSource="{Binding DataContext.StepModes, RelativeSource={RelativeSource AncestorType=views:InputMapperView}}" />
                     </StackPanel>
                     <StackPanel Visibility="{Binding IsRangeTrigger, Converter={StaticResource ShowWhenTrue}}">
                         <TextBlock Style="{StaticResource MapperLabel}" Text="Range hysteresis (%)" />
-                        <TextBox Text="{Binding HysteresisPercent, ValidatesOnExceptions=True}" />
+                        <TextBox Text="{Binding HysteresisPercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Visibility="{Binding IsAxisTrigger, Converter={StaticResource ShowWhenTrue}}">
                         <TextBlock Style="{StaticResource MapperLabel}" Text="Dead zone (%)" />
-                        <TextBox Text="{Binding DeadZonePercent, ValidatesOnExceptions=True}" />
+                        <TextBox Text="{Binding DeadZonePercentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                         <TextBlock Style="{StaticResource MapperLabel}" Text="Response curve exponent" />
-                        <TextBox Text="{Binding CurveExponent, ValidatesOnExceptions=True}" />
+                        <TextBox Text="{Binding CurveExponentText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Visibility="{Binding IsTapAction, Converter={StaticResource ShowWhenTrue}}">
                         <TextBlock Style="{StaticResource MapperLabel}" Text="Tap duration (ms)" />
-                        <TextBox Text="{Binding DurationMs, ValidatesOnExceptions=True}" />
+                        <TextBox Text="{Binding DurationMsText, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

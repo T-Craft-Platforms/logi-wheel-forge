@@ -174,7 +174,7 @@ public sealed class MapperRuleEngine
                 Activity(rule, MappingOutputState.Released, _output.Release(rule.Output, rule.Action == MapperActionKind.MouseButton));
             if (rule.Action == MapperActionKind.HoldTarget && rule.ForceRelease == MapperForceRelease.RangeExit)
                 _force.ReleaseHold();
-            if (rule.Mode != MapperActionMode.Toggle) Activity(rule, MappingOutputState.Released);
+            if (rule.Mode != MapperActionMode.Toggle && !(rule.Mode == MapperActionMode.Hold && rule.Action is (MapperActionKind.Key or MapperActionKind.MouseButton))) Activity(rule, MappingOutputState.Released);
         }
     }
 

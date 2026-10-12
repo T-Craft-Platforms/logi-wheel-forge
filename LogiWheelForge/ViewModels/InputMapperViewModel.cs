@@ -14,6 +14,7 @@ namespace LogiWheelForge.ViewModels;
 public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
 {
     private MapperRule _value;
+    private readonly DraftNumberFields _numbers = new();
     public MapperRuleDraft(MapperRule rule) => _value = MapperOutputValidation.Normalize(rule);
     public string Id => _value.Id;
     public string Control { get => _value.Control; set => Change(_value with { Control = value }); }
@@ -66,12 +67,21 @@ public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
         MapperActionKind.MouseMove => ["Horizontal", "Vertical"],
         _ => ["W", "A", "S", "D", "Space", "Enter", "Escape", "Left", "Right", "Up", "Down"]
     };
-    public string ValidationMessage => _value.TryValidate(out var error) ? string.Empty : error;
+    public string StepPercentText { get => _numbers.Get(nameof(StepPercent), StepPercent); set => _numbers.Set(nameof(StepPercent), value, value => StepPercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string MinPercentText { get => _numbers.Get(nameof(MinPercent), MinPercent); set => _numbers.Set(nameof(MinPercent), value, value => MinPercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string MaxPercentText { get => _numbers.Get(nameof(MaxPercent), MaxPercent); set => _numbers.Set(nameof(MaxPercent), value, value => MaxPercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string HysteresisPercentText { get => _numbers.Get(nameof(HysteresisPercent), HysteresisPercent); set => _numbers.Set(nameof(HysteresisPercent), value, value => HysteresisPercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string DeadZonePercentText { get => _numbers.Get(nameof(DeadZonePercent), DeadZonePercent); set => _numbers.Set(nameof(DeadZonePercent), value, value => DeadZonePercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string CurveExponentText { get => _numbers.Get(nameof(CurveExponent), CurveExponent); set => _numbers.Set(nameof(CurveExponent), value, value => CurveExponent = value, () => OnPropertyChanged(string.Empty)); }
+    public string OutputScaleText { get => _numbers.Get(nameof(OutputScale), OutputScale); set => _numbers.Set(nameof(OutputScale), value, value => OutputScale = value, () => OnPropertyChanged(string.Empty)); }
+    public string TargetPercentText { get => _numbers.Get(nameof(TargetPercent), TargetPercent); set => _numbers.Set(nameof(TargetPercent), value, value => TargetPercent = value, () => OnPropertyChanged(string.Empty)); }
+    public string DurationMsText { get => _numbers.Get(nameof(DurationMs), DurationMs); set => _numbers.Set(nameof(DurationMs), value, value => DurationMs = value is >= int.MinValue and <= int.MaxValue && value == Math.Truncate(value) ? (int)value : 0, () => OnPropertyChanged(string.Empty)); }
+    public string ValidationMessage => _numbers.Error.Length > 0 ? _numbers.Error : _value.TryValidate(out var error) ? string.Empty : error;
     private static string Label(object value) => (string)new MapperChoiceLabelConverter().Convert(
         value, typeof(string), null!, System.Globalization.CultureInfo.CurrentCulture);
     public string Summary => $"{Control} · {TriggerLabel} → {ActionLabel} {OutputSummary}";
     public string Error => ValidationMessage;
-    public string this[string columnName] => columnName switch
+    public string this[string columnName] => columnName.EndsWith("Text", StringComparison.Ordinal) && _numbers.IsInvalid(columnName[..^4]) ? "Enter a valid number." : columnName.Replace("Text", string.Empty, StringComparison.Ordinal) switch
     {
         nameof(Output) when Action == MapperActionKind.Key && !MapperOutputValidation.IsValidShortcut(Output) => "Enter a valid key or shortcut.",
         nameof(Output) when Action == MapperActionKind.MouseButton && !MapperOutputValidation.IsMouseButton(Output) => "Choose a supported mouse button.",
@@ -81,9 +91,11 @@ public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
         nameof(DurationMs) when DurationMs is < 10 or > 5000 => "Use 10–5000 milliseconds.",
         _ => string.Empty
     };
-    public MapperRule Build() => MapperOutputValidation.Normalize(_value);
-    private void Change(MapperRule value)
+    public MapperRule Snapshot() => MapperOutputValidation.Normalize(_value);
+    public MapperRule Build() { _numbers.Validate(); return Snapshot(); }
+    private void Change(MapperRule value, [System.Runtime.CompilerServices.CallerMemberName] string property = "")
     {
+        _numbers.Clear(property);
         _value = value;
         OnPropertyChanged(string.Empty);
         OnPropertyChanged(nameof(Summary));
@@ -92,6 +104,7 @@ public sealed class MapperRuleDraft : ObservableObject, IDataErrorInfo
 
 public sealed class MapperProfileDraft : ObservableObject
 {
+    private readonly DraftNumberFields _numbers = new();
     private string _name;
     private bool _enabled;
     private bool _resistanceEnabled, _detentsEnabled;
@@ -132,7 +145,12 @@ public sealed class MapperProfileDraft : ObservableObject
     public double DetentSpacingPercent { get => _detentSpacingPercent; set => SetField(ref _detentSpacingPercent, value); }
     public double DetentHysteresisPercent { get => _detentHysteresisPercent; set => SetField(ref _detentHysteresisPercent, value); }
     public double DetentStrength { get => _detentStrength; set => SetField(ref _detentStrength, value); }
-    public InputMapperProfile Build() => new()
+    public string DetentSpacingPercentText { get => _numbers.Get(nameof(DetentSpacingPercent), DetentSpacingPercent); set => _numbers.Set(nameof(DetentSpacingPercent), value, number => { DetentSpacingPercent = number; NotifyChanged(); }, NotifyChanged); }
+    public string DetentHysteresisPercentText { get => _numbers.Get(nameof(DetentHysteresisPercent), DetentHysteresisPercent); set => _numbers.Set(nameof(DetentHysteresisPercent), value, number => { DetentHysteresisPercent = number; NotifyChanged(); }, NotifyChanged); }
+    public InputMapperProfile Build()
+    {
+        _numbers.Validate();
+        return new()
     {
         Id = Id, Name = Name?.Trim() ?? string.Empty, Enabled = Enabled,
         ProcessPaths = ProcessPaths.Select(path => Path.GetFullPath(path.Trim())).ToArray(),
@@ -145,12 +163,13 @@ public sealed class MapperProfileDraft : ObservableObject
             DetentStrength = DetentStrength
         }
     };
+    }
 
     public string ApplicationsSummary => ProcessPaths.Count == 0 ? "No applications linked" : string.Join(" · ", ProcessPaths.Select(Path.GetFileName));
     public string EnabledLabel => Enabled ? "Enabled" : "Disabled";
     public string NameError => string.IsNullOrWhiteSpace(Name) || Name.Length > 64 ? "Enter a profile name of up to 64 characters." : string.Empty;
     public string ApplicationsError { get; private set; } = string.Empty;
-    public string ResistanceError => BuildResistance().TryValidate() ? string.Empty : "Check the resistance strengths, spacing and hysteresis.";
+    public string ResistanceError => _numbers.Error.Length > 0 ? _numbers.Error : BuildResistance().TryValidate() ? string.Empty : "Check the resistance strengths, spacing and hysteresis.";
     public string SetupWarning => !string.IsNullOrEmpty(NameError) ? NameError : !string.IsNullOrEmpty(ApplicationsError) ? ApplicationsError :
         !string.IsNullOrEmpty(ResistanceError) ? ResistanceError : Rules.Any(r => r.ValidationMessage.Length > 0) ? "A mapping needs attention" :
         ProcessPaths.Count == 0 ? "Link an application to go live" : Rules.Count == 0 ? "Add a mapping to get started" : string.Empty;
@@ -429,7 +448,7 @@ public sealed class InputMapperViewModel : ObservableObject, IDisposable
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
         if (!Controls.SequenceEqual(available)) { Controls.Clear(); foreach (var control in available) Controls.Add(control); }
         OnPropertyChanged(nameof(ControlAvailability));
-        MappingDiagnosticRow.Update(ActivityRows, SelectedProfile?.Rules.Select(r => r.Build()).ToArray() ?? [],
+        MappingDiagnosticRow.Update(ActivityRows, SelectedProfile?.Rules.Select(r => r.Snapshot()).ToArray() ?? [],
             diagnostics.Preview.Where(a => a.ProfileId == SelectedProfile?.Id), "Preview");
     }
 }

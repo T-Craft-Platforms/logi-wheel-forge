@@ -100,6 +100,7 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
         { _layout = new(); LoadError = $"Layout could not be loaded: {ex.Message}"; OnPropertyChanged(nameof(LoadError)); }
         _initialized = true; Rebuild();
+        if (LoadError is null) _save.Edit();
     }
     public string? LoadError { get; private set; }
     public void SetWidth(double width)
@@ -107,7 +108,7 @@ public sealed class DashboardBoardViewModel : ObservableObject, IDisposable
         if (!double.IsFinite(width) || width <= 0) return;
         var columns = DashboardLayoutEngine.Columns(width);
         _width = width;
-        if (columns != _columns) { CancelDrag(); _columns = columns; Rebuild(); }
+        if (columns != _columns) { CancelDrag(); _columns = columns; var firstVisit = !_layout.Breakpoints.ContainsKey(columns); Rebuild(); if (_initialized && firstVisit) _save.Edit(); }
         else UpdateGeometry();
     }
     public void Add(DashboardWidgetKind kind)
