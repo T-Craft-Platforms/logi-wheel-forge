@@ -23,10 +23,13 @@ public sealed class MappingDiagnosticRow : ObservableObject
             var row = rows.FirstOrDefault(r => r.Id == rule.Id);
             if (row is null) rows.Add(row = new(rule.Id));
             row.Summary = $"{rule.Control} → {rule.Trigger} → {rule.Action} {rule.Output}";
-            var found = states.TryGetValue(rule.Id, out var state);
-            row.IsActive = found && (state!.State is MappingOutputState.Held or MappingOutputState.Queued ||
-                state.State == MappingOutputState.Triggered && DateTimeOffset.UtcNow - state.At < TimeSpan.FromMilliseconds(300));
-            row.State = found ? $"{mode} · {state.State}" + (state.Error is null ? "" : " · " + state.Error) : mode + " · Waiting";
+            if (states.TryGetValue(rule.Id, out var state))
+            {
+                row.IsActive = state.State is MappingOutputState.Held or MappingOutputState.Queued ||
+                    state.State == MappingOutputState.Triggered && DateTimeOffset.UtcNow - state.At < TimeSpan.FromMilliseconds(300);
+                row.State = $"{mode} · {state.State}" + (state.Error is null ? "" : " · " + state.Error);
+            }
+            else { row.IsActive = false; row.State = mode + " · Waiting"; }
         }
     }
 }
