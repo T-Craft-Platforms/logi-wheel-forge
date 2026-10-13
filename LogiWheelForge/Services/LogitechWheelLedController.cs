@@ -46,6 +46,7 @@ public sealed class LogitechWheelLedController : IWheelLedController
         lock (_gate)
         {
             if (string.Equals(_preferredWheelId, wheelId, StringComparison.OrdinalIgnoreCase)) return;
+            ClearLeds(); // Release the previous instance's latched LED state before closing its interface.
             _preferredWheelId = wheelId;
             DisconnectCore();
             _nextDiscoveryAt = DateTimeOffset.MinValue;
