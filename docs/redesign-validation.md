@@ -16,6 +16,8 @@ The Windows workflow uses an x64 host, a 180-second connection timeout, serializ
 
 Both-theme rendering artifacts were downloaded and visually inspected at 608, 944, and 1320 DIP, including the dashboard, edit controls, empty state, module welcome panels, profile setup, and mapping details. Rendering uses a real WPF window and dispatcher, with a Canvas capture host to avoid clipping wider images to the CI monitor. Review found and corrected visibility fallbacks, editable-control resets, and unused space in the narrow mapping layout.
 
+The resistance path also corrects the baseline acquisition flags to `DISCL_EXCLUSIVE | DISCL_BACKGROUND`, so effects can be acquired while a linked application owns foreground focus. The mapper retains its foreground guard and releases effects when that guard ends. See [Microsoft’s cooperative-level reference](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416848%28v%3Dvs.85%29).
+
 ## Hardware acceptance still required
 
 On a Windows PC with supported wheels:

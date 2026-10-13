@@ -6,6 +6,7 @@ namespace LogiWheelForge.Services;
 /// <summary>Uses system DirectInput spring/damper effects; no vendor command is emitted.</summary>
 public sealed class DirectInputResistanceController : IWheelResistanceController
 {
+    private const uint CooperativeExclusive = 0x00000001, CooperativeBackground = 0x00000008;
     private static readonly Guid DirectInputId = new("BF798031-483A-4DA2-AA99-5D64ED369700");
     private static readonly Guid XAxis = new("A36D02E0-C9F3-11CF-BFC7-444553540000");
     private static readonly Guid Spring = new("13541C27-8E33-11D0-9AD0-00A0C9A06E35");
@@ -80,7 +81,9 @@ public sealed class DirectInputResistanceController : IWheelResistanceController
             var guid = instance.Value;
             if (_directInput.CreateDevice(ref guid, out _device, 0) < 0 || _device is null)
             { Status = "Could not open wheel force-feedback device"; StopDevice(); return false; }
-            if (!SetXAxisFormat(_device) || _device.SetCooperativeLevel(_window, 0x11) < 0 ||
+            // The linked application holds foreground focus while effects run. The engine owns that guard;
+            // acquire the wheel with exclusive background access, as required by DirectInput force effects.
+            if (!SetXAxisFormat(_device) || _device.SetCooperativeLevel(_window, CooperativeExclusive | CooperativeBackground) < 0 ||
                 _device.Acquire() < 0)
             { Status = "Wheel force feedback is busy or unavailable"; StopDevice(); return false; }
             _spring = CreateConditionEffect(_device, Spring, 0, settings.CenterStrength, out _springData);
