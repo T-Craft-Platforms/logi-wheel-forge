@@ -262,7 +262,7 @@
                         </StackPanel>
                     </Border>
                 </Canvas>
-                <Border Style="{StaticResource CardStyle}" Visibility="{Binding Board.IsEmpty, Converter={StaticResource Show}}">
+                <Border x:Name="EmptyState" Width="{Binding ActualWidth, ElementName=BoardSurface}" HorizontalAlignment="Left" Style="{StaticResource CardStyle}" Visibility="{Binding Board.IsEmpty, Converter={StaticResource Show}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Viewbox Width="100" Height="64">
                             <Canvas Width="100" Height="64">

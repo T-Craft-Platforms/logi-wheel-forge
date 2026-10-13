@@ -6,7 +6,7 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="ListColumn" Width="280"/>
-            <ColumnDefinition/>
+            <ColumnDefinition x:Name="DetailsColumn"/>
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="MappingList" Margin="0,0,16,0">
             <DockPanel Margin="0,0,0,10">

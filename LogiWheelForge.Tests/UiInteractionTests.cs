@@ -123,6 +123,10 @@ public sealed class UiInteractionTests
                 Assert.IsFalse(Descendants<Button>(view).Any(button => Equals(button.Content, "Save changes")), "Profiles should autosave without a bottom save bar.");
                 Assert.IsTrue(Descendants<TextBlock>(view).Any(text => text.Text is "Saved" or "Saving" or "Needs attention"));
                 Assert.IsTrue(Descendants<ModuleHeader>(view).Single().ModuleEnabled);
+                var mappings = Descendants<MappingsEditor>(view).Single();
+                if (mappings.ActualWidth < 860)
+                    Assert.AreEqual(mappings.ActualWidth, ((StackPanel)mappings.FindName("MappingList")).ActualWidth, 1,
+                        "Narrow mapping lists must use the full width when details move below them.");
                 Render(root, $"mapper-{theme}-{width}");
                 Assert.IsTrue(Descendants<ComboBox>(view).Where(combo => combo.ActualWidth > 0).All(combo => combo.ActualWidth > 100));
                 tabs.SelectedIndex = 1;
