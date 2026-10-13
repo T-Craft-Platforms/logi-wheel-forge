@@ -53,7 +53,10 @@ public sealed class UiInteractionTests
         root.SetResourceReference(Border.BackgroundProperty, "WindowBrush");
 
         root.Width = 944; root.Height = 704;
-        var renderHost = new Window { Content = root, Width = 944, Height = 704,
+        // Canvas gives the capture root its requested dimensions even when wider than the CI monitor.
+        // The window retains the real dispatcher and ancestor bindings; the bitmap captures the full child visual.
+        var renderCanvas = new Canvas(); renderCanvas.Children.Add(root);
+        var renderHost = new Window { Content = renderCanvas, Width = 944, Height = 704,
             ShowInTaskbar = false, WindowStyle = WindowStyle.None,
             DataContext = new ModuleState { IsLedModuleEnabled = true, IsInputMapperModuleEnabled = true } };
         renderHost.Show();

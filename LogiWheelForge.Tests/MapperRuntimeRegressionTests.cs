@@ -84,6 +84,18 @@ public sealed class MapperRuntimeRegressionTests
         Assert.AreEqual(profile.Id, events[^1].ProfileId); Assert.AreEqual(profile.Rules[0].Id, events[^1].RuleId);
     }
     [TestMethod]
+    public void SaturatedTapQueue_IsBoundedAndExplainsDroppedOutputs()
+    {
+        var engine = new MapperRuleEngine(new FakeOutput(), new InertWheelResistance());
+        var events = new List<MappingActivity>(); engine.ActivityChanged += (_, activity) => events.Add(activity);
+        engine.Activate(new() { Rules = [new() { StepPercent = 1 }] }, "wheel");
+        engine.Update(new("Steering", 0, false)); engine.Update(new("Steering", 20, false));
+        Assert.AreEqual(8, engine.DroppedPulses);
+        Assert.AreEqual(12, events.Count(a => a.State == MappingOutputState.Queued));
+        Assert.IsTrue(events.Where(a => a.State == MappingOutputState.Failed).All(a => a.Error!.Contains("Tap queue is full")));
+    }
+
+    [TestMethod]
     public async Task ForegroundGuard_AndDisableDisconnectProfileChangesReleaseOutputs()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");

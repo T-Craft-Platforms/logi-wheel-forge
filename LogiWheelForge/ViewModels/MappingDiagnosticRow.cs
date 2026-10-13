@@ -6,12 +6,13 @@ namespace LogiWheelForge.ViewModels;
 
 public sealed class MappingDiagnosticRow : ObservableObject
 {
+    private bool _isActive;
     private string _state = "Waiting", _summary = string.Empty;
     public MappingDiagnosticRow(string id) => Id = id;
     public string Id { get; }
     public string Summary { get => _summary; private set => SetField(ref _summary, value); }
-    public string State { get => _state; private set { if (SetField(ref _state, value)) OnPropertyChanged(nameof(IsActive)); } }
-    public bool IsActive => State.Contains("Held") || State.Contains("Queued") || State.Contains("Triggered");
+    public string State { get => _state; private set => SetField(ref _state, value); }
+    public bool IsActive { get => _isActive; private set => SetField(ref _isActive, value); }
     public static void Update(ObservableCollection<MappingDiagnosticRow> rows, IReadOnlyList<MapperRule> rules,
         IEnumerable<MappingActivity> activity, string mode)
     {
@@ -22,7 +23,10 @@ public sealed class MappingDiagnosticRow : ObservableObject
             var row = rows.FirstOrDefault(r => r.Id == rule.Id);
             if (row is null) rows.Add(row = new(rule.Id));
             row.Summary = $"{rule.Control} → {rule.Trigger} → {rule.Action} {rule.Output}";
-            row.State = states.TryGetValue(rule.Id, out var state) ? $"{mode} · {state.State}" + (state.Error is null ? "" : " · " + state.Error) : mode + " · Waiting";
+            var found = states.TryGetValue(rule.Id, out var state);
+            row.IsActive = found && (state!.State is MappingOutputState.Held or MappingOutputState.Queued ||
+                state.State == MappingOutputState.Triggered && DateTimeOffset.UtcNow - state.At < TimeSpan.FromMilliseconds(300));
+            row.State = found ? $"{mode} · {state.State}" + (state.Error is null ? "" : " · " + state.Error) : mode + " · Waiting";
         }
     }
 }

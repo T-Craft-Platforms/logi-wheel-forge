@@ -54,9 +54,9 @@ public sealed class MapperRuleEngine
     }
 
     public event EventHandler<MappingActivity>? ActivityChanged;
-    private void Activity(MapperRule rule, MappingOutputState state, bool success = true) =>
+    private void Activity(MapperRule rule, MappingOutputState state, bool success = true, string? error = null) =>
         ActivityChanged?.Invoke(this, new MappingActivity(_profile?.Id ?? string.Empty, rule.Id,
-            success ? state : MappingOutputState.Failed, _clock.GetUtcNow(), success ? null : _output.LastError ?? _force.Status));
+            success ? state : MappingOutputState.Failed, _clock.GetUtcNow(), success ? null : error ?? _output.LastError ?? _force.Status));
 
     public int DroppedPulses { get; private set; }
     public void Activate(InputMapperProfile profile, string wheelId)
@@ -207,7 +207,7 @@ public sealed class MapperRuleEngine
                 break;
             case MapperActionMode.Tap:
                 if (_pulses.Count < 12) { _pulses.Enqueue(rule); Activity(rule, MappingOutputState.Queued); }
-                else { DroppedPulses++; Activity(rule, MappingOutputState.Failed, false); }
+                else { DroppedPulses++; Activity(rule, MappingOutputState.Failed, false, "Tap queue is full. Increase the step size or shorten tap duration."); }
                 break;
         }
     }
