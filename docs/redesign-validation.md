@@ -2,17 +2,19 @@
 
 ## Automated verification
 
-- Release cross-build of the entire solution with .NET 10, Windows targeting enabled: passed, zero warnings and zero errors.
+- Release build of the entire solution on Windows CI: passed, zero warnings and zero errors. The Linux Windows-targeting cross-build also passed.
 - Portable regression suite: 24 passing tests. It compiles the actual production layout, persistence, physical-device selection, presentation coordinator, autosave, and numeric-draft code.
 - Portable coverage includes breakpoint boundaries, all default layouts, deterministic collision cascades, preserved gaps, presets, atomic persistence, independent membership, zero/one/multiple wheels, identical models, auxiliary pedals, stale preferences, 30-Hz/2-Hz/hidden pacing with a fake clock, immediate restoration, mounted views, bounded snapshots, debounce, serialized writes, revision ordering, validation/write failures, and shutdown flushing.
-- The Windows suite adds board drag cancellation/drop/reset/navigation, vertical mouse movement and legacy aliases, malformed shortcuts, cached raw-device reselection and control replacement, foreground guards, release on disable/disconnect/profile changes, preservation of inactive edits, rejected writes, inert preview adapters, profile cards/navigation/starter mappings, multiple linked applications, and settings migration.
+- Windows WPF/runtime suite: **58 passing tests**, with zero failures or skips. The Windows suite covers board drag cancellation/drop/reset/navigation, vertical mouse movement and legacy aliases, malformed shortcuts, cached raw-device reselection and control replacement, foreground guards, release on disable/disconnect/profile changes, preservation of inactive edits, rejected writes, inert preview adapters, profile cards/navigation/starter mappings, multiple linked applications, and settings migration.
 - Windows rendering coverage uses both themes at narrow, default, and wide widths, including editable/empty dashboards, mapping details, module switches, and disabled pages. Set `LOGIWHEELFORGE_RENDER_OUTPUT` to save the PNGs. CI uploads the images alongside TRX and test-host diagnostics.
 
 ## Local runner limitation
 
 The local worker is Linux ARM64. A .NET 10 SDK was installed temporarily to compile Windows targets and execute the portable tests. The full WPF/runtime test invocation aborted before executing tests because VSTest could not find an x64 .NET host. This is a concrete platform prerequisite failure, not a passing test run.
 
-The Windows workflow uses an x64 host, a 180-second connection timeout, serialized test execution, a bounded test session, and diagnostic logging to make the baseline host-connection problem observable. A Windows CI or local Windows result is still required before claiming the full suite and UI renders passed. No Windows renders were produced or visually inspected on the Linux worker.
+The Windows workflow uses an x64 host, a 180-second connection timeout, serialized test execution, a bounded test session, and diagnostic logging. The complete Windows run succeeded, resolving the baseline runner blocker for validation: **58 Windows tests + 24 portable tests = 82 passing tests**. See the [verified Windows run](https://github.com/T-Craft-Platforms/logi-wheel-forge/actions/runs/38325725468).
+
+Both-theme rendering artifacts were downloaded and visually inspected at 608, 944, and 1320 DIP, including the dashboard, edit controls, empty state, module welcome panels, profile setup, and mapping details. Rendering uses a real WPF window and dispatcher, with a Canvas capture host to avoid clipping wider images to the CI monitor. Review found and corrected visibility fallbacks, editable-control resets, and unused space in the narrow mapping layout.
 
 ## Hardware acceptance still required
 
